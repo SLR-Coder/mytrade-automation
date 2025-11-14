@@ -86,7 +86,7 @@ async def send_status_notification(status: str) -> bool:
     Returns:
         Success status
     """
-    message = f"ℹ️ <b>System Status</b>\n\n{status}"
+    message = f"ℹ️ <b>Sistem Durumu</b>\n\n{status}"
 
     # Send to ADMIN private chat, not public channel
     admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
@@ -114,15 +114,15 @@ async def send_health_alert(component: str, status: str, details: str = None) ->
     emoji = emoji_map.get(status, "ℹ️")
 
     message = (
-        f"{emoji} <b>Health Alert</b>\n\n"
-        f"🔧 Component: {component}\n"
-        f"📊 Status: {status}\n"
+        f"{emoji} <b>Sağlık Uyarısı</b>\n\n"
+        f"🔧 Bileşen: {component}\n"
+        f"📊 Durum: {status}\n"
     )
 
     if details:
-        message += f"📝 Details: {details}\n"
+        message += f"📝 Detaylar: {details}\n"
 
-    message += f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    message += f"⏰ Zaman: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
     # Send to ADMIN private chat, not public channel
     admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)

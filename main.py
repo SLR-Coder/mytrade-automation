@@ -64,15 +64,15 @@ async def run_async_robot(robot_module, robot_name: str, max_retries: int = 2) -
     """
     for attempt in range(max_retries + 1):
         try:
-            logger.info(f"🤖 Running {robot_name}... (attempt {attempt + 1}/{max_retries + 1})")
+            logger.info(f"🤖 {robot_name} çalıştırılıyor... (deneme {attempt + 1}/{max_retries + 1})")
 
             await robot_module.run()
 
-            logger.info(f"✅ {robot_name} completed successfully")
+            logger.info(f"✅ {robot_name} başarıyla tamamlandı")
             return True
 
         except Exception as e:
-            logger.error(f"❌ {robot_name} failed: {e}", exc_info=True)
+            logger.error(f"❌ {robot_name} başarısız: {e}", exc_info=True)
 
             # Send Telegram notification on error
             try:
@@ -88,10 +88,10 @@ async def run_async_robot(robot_module, robot_name: str, max_retries: int = 2) -
             # Retry logic
             if attempt < max_retries:
                 wait_time = 2 ** attempt  # Exponential backoff
-                logger.info(f"⏳ Retrying {robot_name} in {wait_time}s...")
+                logger.info(f"⏳ {robot_name} {wait_time}s içinde tekrar deneniyor...")
                 await asyncio.sleep(wait_time)
             else:
-                logger.error(f"💥 {robot_name} failed after {max_retries + 1} attempts")
+                logger.error(f"💥 {robot_name} {max_retries + 1} denemeden sonra başarısız oldu")
                 return False
 
     return False
@@ -111,15 +111,15 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
     """
     for attempt in range(max_retries + 1):
         try:
-            logger.info(f"🤖 Running {robot_name}... (attempt {attempt + 1}/{max_retries + 1})")
+            logger.info(f"🤖 {robot_name} çalıştırılıyor... (deneme {attempt + 1}/{max_retries + 1})")
 
             robot_module.run()
 
-            logger.info(f"✅ {robot_name} completed successfully")
+            logger.info(f"✅ {robot_name} başarıyla tamamlandı")
             return True
 
         except Exception as e:
-            logger.error(f"❌ {robot_name} failed: {e}", exc_info=True)
+            logger.error(f"❌ {robot_name} başarısız: {e}", exc_info=True)
 
             # Send Telegram notification on error (sync version)
             try:
@@ -136,11 +136,11 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
             # Retry logic
             if attempt < max_retries:
                 wait_time = 2 ** attempt
-                logger.info(f"⏳ Retrying {robot_name} in {wait_time}s...")
+                logger.info(f"⏳ {robot_name} {wait_time}s içinde tekrar deneniyor...")
                 import time
                 time.sleep(wait_time)
             else:
-                logger.error(f"💥 {robot_name} failed after {max_retries + 1} attempts")
+                logger.error(f"💥 {robot_name} {max_retries + 1} denemeden sonra başarısız oldu")
                 return False
 
     return False
@@ -168,19 +168,19 @@ async def main_async():
     start_time = datetime.now()
 
     logger.info("=" * 70)
-    logger.info("🚀 MYTRADE PROFESSIONAL AUTOMATION V2.0")
+    logger.info("🚀 MYTRADE PROFESYONEL OTOMASYON V2.0")
     logger.info("=" * 70)
-    logger.info(f"⏰ Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"⏰ Başlangıç: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Send start notification
     try:
-        await send_status_notification("🚀 MyTrade automation started")
+        await send_status_notification("🚀 MyTrade otomasyonu başlatıldı")
     except:
         pass
 
     # Get robot selection from environment
     robot_select = os.getenv("ROBOT", "1,2,3,4,5,6")
-    logger.info(f"📋 Selected robots: {robot_select}")
+    logger.info(f"📋 Seçili robotlar: {robot_select}")
 
     results: Dict[str, bool] = {}
 
@@ -238,26 +238,26 @@ async def main_async():
 
         # Summary
         logger.info("=" * 70)
-        logger.info("📊 EXECUTION SUMMARY")
+        logger.info("📊 ÇALIŞTIRMA ÖZETİ")
         logger.info("=" * 70)
 
         successful = sum(1 for v in results.values() if v)
         failed = sum(1 for v in results.values() if not v)
 
         for robot_name, success in results.items():
-            status = "✅ SUCCESS" if success else "❌ FAILED"
+            status = "✅ BAŞARILI" if success else "❌ BAŞARISIZ"
             logger.info(f"  {robot_name}: {status}")
 
         logger.info("=" * 70)
-        logger.info(f"✅ Successful: {successful}/{len(results)}")
-        logger.info(f"❌ Failed: {failed}/{len(results)}")
-        logger.info(f"⏱️  Duration: {duration:.2f}s")
+        logger.info(f"✅ Başarılı: {successful}/{len(results)}")
+        logger.info(f"❌ Başarısız: {failed}/{len(results)}")
+        logger.info(f"⏱️  Süre: {duration:.2f}s")
         logger.info("=" * 70)
 
         if shutdown_requested:
-            logger.info("🛑 GRACEFUL SHUTDOWN COMPLETED")
+            logger.info("🛑 ZARIF KAPATMA TAMAMLANDI")
         else:
-            logger.info("🎉 AUTOMATION COMPLETED SUCCESSFULLY")
+            logger.info("🎉 OTOMASYON BAŞARIYLA TAMAMLANDI")
 
         logger.info("=" * 70)
 
@@ -265,9 +265,9 @@ async def main_async():
         try:
             status_emoji = "✅" if failed == 0 else "⚠️"
             await send_status_notification(
-                f"{status_emoji} Automation completed\n"
-                f"Success: {successful}/{len(results)}\n"
-                f"Duration: {duration:.1f}s"
+                f"{status_emoji} Otomasyon tamamlandı\n"
+                f"Başarılı: {successful}/{len(results)}\n"
+                f"Süre: {duration:.1f}s"
             )
         except:
             pass
@@ -275,12 +275,12 @@ async def main_async():
         return 0 if failed == 0 else 1
 
     except Exception as e:
-        logger.error(f"💥 CRITICAL ERROR: {e}", exc_info=True)
+        logger.error(f"💥 KRİTİK HATA: {e}", exc_info=True)
 
         # Send critical error notification
         try:
             await send_error_notification(
-                robot_name="Main Orchestrator",
+                robot_name="Ana Orkestratör",
                 error=str(e),
                 attempt=1,
                 max_retries=0
