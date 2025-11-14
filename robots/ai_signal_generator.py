@@ -160,16 +160,130 @@ async def run():
             logger.warning("⚠ No market data to analyze")
             return
 
-        # TODO: Implement ensemble signal generation
-        logger.info("AI signal generation placeholder - implementation needed")
+        logger.info(f"\n🤖 Generating AI signals for {len(markets_data)} markets...")
+
+        # Generate signals for each market
+        signals_generated = 0
+        for market_data in markets_data:
+            market = market_data["market"]
+            price = market_data["price"]
+            indicators = market_data["indicators"]
+            row_index = market_data["row_index"]
+
+            logger.info(f"\n📊 Analyzing {market} @ ${price:,.2f}")
+
+            # Get Gemini signal (only available in TEST mode)
+            gemini_signal = get_gemini_signal(market, price, indicators)
+
+            if not gemini_signal:
+                logger.warning(f"  ⚠️ No signal from Gemini for {market}")
+                continue
+
+            # In TEST mode, use Gemini signal as final signal (no ensemble)
+            final_signal = gemini_signal["signal"]
+            final_confidence = gemini_signal["confidence"]
+            reasoning = gemini_signal["reasoning"][:500]  # Truncate for Sheets
+
+            logger.info(f"  🎯 Gemini: {gemini_signal['signal']} ({gemini_signal['confidence']}%)")
+            logger.info(f"  ✅ Final: {final_signal} ({final_confidence}%)")
+
+            # Calculate risk/reward levels
+            tp1, tp2, sl = calculate_risk_reward(price, final_signal, indicators)
+
+            # Write signals to Google Sheets
+            try:
+                # Column V: GPT-4 Signal (N/A in TEST)
+                ws.update_cell(row_index, cols.V, "N/A (TEST)")
+
+                # Column W: Claude Signal (N/A in TEST)
+                ws.update_cell(row_index, cols.W, "N/A (TEST)")
+
+                # Column X: Gemini Signal
+                ws.update_cell(row_index, cols.X, f"{gemini_signal['signal']} ({gemini_signal['confidence']}%)")
+
+                # Column Y: Final Signal (Ensemble)
+                ws.update_cell(row_index, cols.Y, final_signal)
+
+                # Column Z: Confidence
+                ws.update_cell(row_index, cols.Z, f"{final_confidence}%")
+
+                # Column AA: AI Reasoning
+                ws.update_cell(row_index, cols.AA, reasoning)
+
+                # Column AB: Take Profit 1
+                ws.update_cell(row_index, cols.AB, f"${tp1:,.2f}" if tp1 else "")
+
+                # Column AC: Take Profit 2
+                ws.update_cell(row_index, cols.AC, f"${tp2:,.2f}" if tp2 else "")
+
+                # Column AD: Stop Loss
+                ws.update_cell(row_index, cols.AD, f"${sl:,.2f}" if sl else "")
+
+                # Column AE: Robot 3 Status
+                ws.update_cell(row_index, cols.AE, status_text(3, True))
+
+                signals_generated += 1
+                logger.info(f"  ✓ Signal written to row {row_index}")
+
+                # Rate limiting (Google Sheets API)
+                time.sleep(0.5)
+
+            except Exception as e:
+                logger.error(f"  ❌ Failed to write signal for {market}: {e}")
+                continue
 
         logger.info("=" * 60)
-        logger.info("✓ ROBOT 3 COMPLETED (placeholder)")
+        logger.info(f"✓ ROBOT 3 COMPLETED")
+        logger.info(f"  Signals generated: {signals_generated}/{len(markets_data)}")
         logger.info("=" * 60)
 
     except Exception as e:
         logger.error(f"❌ ROBOT 3 FAILED: {e}", exc_info=True)
         raise
+
+
+def calculate_risk_reward(price: float, signal: str, indicators: Dict) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """
+    Calculate Take Profit and Stop Loss levels
+
+    Args:
+        price: Current price
+        signal: BUY/SELL/HOLD
+        indicators: Technical indicators
+
+    Returns:
+        Tuple of (TP1, TP2, SL)
+    """
+    if signal == "HOLD":
+        return None, None, None
+
+    # Get ATR-based volatility (use Bollinger Bands as proxy)
+    bb_upper = indicators.get("bb_upper")
+    bb_lower = indicators.get("bb_lower")
+
+    if bb_upper and bb_lower:
+        volatility = (bb_upper - bb_lower) / price
+    else:
+        volatility = 0.02  # Default 2% volatility
+
+    if signal == "BUY":
+        # Take Profit levels (1.5x and 3x risk)
+        tp1 = price * (1 + volatility * 1.5)
+        tp2 = price * (1 + volatility * 3.0)
+        # Stop Loss (below support or -1x volatility)
+        sl = price * (1 - volatility * 1.0)
+
+    elif signal == "SELL":
+        # Take Profit levels (1.5x and 3x risk)
+        tp1 = price * (1 - volatility * 1.5)
+        tp2 = price * (1 - volatility * 3.0)
+        # Stop Loss (above resistance or +1x volatility)
+        sl = price * (1 + volatility * 1.0)
+
+    else:
+        return None, None, None
+
+    return tp1, tp2, sl
 
 
 if __name__ == "__main__":
