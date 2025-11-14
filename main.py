@@ -32,7 +32,7 @@ setup_logging(
 logger = get_logger("MyTrade-Main")
 
 # Telegram notifications for critical errors
-from utils.telegram_notifier import send_error_notification, send_status_notification
+from utils.telegram_notifier import send_error_notification, send_status_notification, send_robot_progress
 
 # Global shutdown flag
 shutdown_requested = False
@@ -66,9 +66,23 @@ async def run_async_robot(robot_module, robot_name: str, max_retries: int = 2) -
         try:
             logger.info(f"🤖 {robot_name} çalıştırılıyor... (deneme {attempt + 1}/{max_retries + 1})")
 
+            # Send start notification (only on first attempt)
+            if attempt == 0:
+                try:
+                    await send_robot_progress(robot_name, "STARTED")
+                except:
+                    pass
+
             await robot_module.run()
 
             logger.info(f"✅ {robot_name} başarıyla tamamlandı")
+
+            # Send completion notification
+            try:
+                await send_robot_progress(robot_name, "COMPLETED")
+            except:
+                pass
+
             return True
 
         except Exception as e:
@@ -76,14 +90,9 @@ async def run_async_robot(robot_module, robot_name: str, max_retries: int = 2) -
 
             # Send Telegram notification on error
             try:
-                await send_error_notification(
-                    robot_name=robot_name,
-                    error=str(e),
-                    attempt=attempt + 1,
-                    max_retries=max_retries
-                )
+                await send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}")
             except:
-                pass  # Don't fail if notification fails
+                pass
 
             # Retry logic
             if attempt < max_retries:
@@ -113,23 +122,34 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
         try:
             logger.info(f"🤖 {robot_name} çalıştırılıyor... (deneme {attempt + 1}/{max_retries + 1})")
 
+            # Send start notification (only on first attempt)
+            if attempt == 0:
+                try:
+                    import asyncio
+                    asyncio.run(send_robot_progress(robot_name, "STARTED"))
+                except:
+                    pass
+
             robot_module.run()
 
             logger.info(f"✅ {robot_name} başarıyla tamamlandı")
+
+            # Send completion notification
+            try:
+                import asyncio
+                asyncio.run(send_robot_progress(robot_name, "COMPLETED"))
+            except:
+                pass
+
             return True
 
         except Exception as e:
             logger.error(f"❌ {robot_name} başarısız: {e}", exc_info=True)
 
-            # Send Telegram notification on error (sync version)
+            # Send Telegram notification on error
             try:
                 import asyncio
-                asyncio.run(send_error_notification(
-                    robot_name=robot_name,
-                    error=str(e),
-                    attempt=attempt + 1,
-                    max_retries=max_retries
-                ))
+                asyncio.run(send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}"))
             except:
                 pass
 

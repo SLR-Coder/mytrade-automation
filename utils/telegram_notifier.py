@@ -127,3 +127,45 @@ async def send_health_alert(component: str, status: str, details: str = None) ->
     # Send to ADMIN private chat, not public channel
     admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
     return await send_telegram_message(message, chat_id=admin_chat_id)
+
+async def send_robot_progress(robot_name: str, status: str, details: str = None) -> bool:
+    """
+    Send robot progress update to Telegram ADMIN (private chat)
+
+    Args:
+        robot_name: Name of the robot
+        status: Progress status (STARTED, IN_PROGRESS, COMPLETED, FAILED)
+        details: Optional details about the progress
+
+    Returns:
+        Success status
+    """
+    # Status emoji mapping
+    emoji_map = {
+        "STARTED": "🚀",
+        "IN_PROGRESS": "⚙️",
+        "COMPLETED": "✅",
+        "FAILED": "❌"
+    }
+
+    emoji = emoji_map.get(status, "ℹ️")
+
+    message = f"{emoji} <b>{robot_name}</b>\n\n"
+
+    if status == "STARTED":
+        message += f"📍 Durum: Başlatıldı\n"
+    elif status == "IN_PROGRESS":
+        message += f"📍 Durum: İşleniyor\n"
+    elif status == "COMPLETED":
+        message += f"📍 Durum: Tamamlandı\n"
+    elif status == "FAILED":
+        message += f"📍 Durum: Başarısız\n"
+
+    if details:
+        message += f"📝 {details}\n"
+
+    message += f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+
+    # Send to ADMIN private chat, not public channel
+    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    return await send_telegram_message(message, chat_id=admin_chat_id)
