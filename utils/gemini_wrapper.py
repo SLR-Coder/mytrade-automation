@@ -110,40 +110,40 @@ class GeminiClient:
         news_sentiment: Optional[str]
     ) -> str:
         """Build analysis prompt"""
-        prompt = f"""Analyze {market} for trading opportunities.
+        prompt = f"""{market} piyasasını al/sat fırsatları için analiz et.
 
-**Current Market Status:**
-- Price: ${price:,.2f}
+**Güncel Piyasa Durumu:**
+- Fiyat: ${price:,.2f}
 
-**Technical Indicators:**
+**Teknik Göstergeler:**
 - RSI: {indicators.get('rsi', 'N/A')}
 - MACD: {indicators.get('macd', 'N/A')}
 - MACD Signal: {indicators.get('macd_signal', 'N/A')}
 - MACD Histogram: {indicators.get('macd_histogram', 'N/A')}
-- Bollinger Bands:
-  - Upper: {indicators.get('bb_upper', 'N/A')}
-  - Middle: {indicators.get('bb_middle', 'N/A')}
-  - Lower: {indicators.get('bb_lower', 'N/A')}
-- EMAs:
+- Bollinger Bantları:
+  - Üst: {indicators.get('bb_upper', 'N/A')}
+  - Orta: {indicators.get('bb_middle', 'N/A')}
+  - Alt: {indicators.get('bb_lower', 'N/A')}
+- EMA'lar:
   - EMA 9: {indicators.get('ema_9', 'N/A')}
   - EMA 21: {indicators.get('ema_21', 'N/A')}
   - EMA 50: {indicators.get('ema_50', 'N/A')}
   - EMA 200: {indicators.get('ema_200', 'N/A')}
-- Support Level: {indicators.get('support_levels', ['N/A'])[0] if indicators.get('support_levels') else 'N/A'}
-- Resistance Level: {indicators.get('resistance_levels', ['N/A'])[0] if indicators.get('resistance_levels') else 'N/A'}
+- Destek Seviyesi: {indicators.get('support_levels', ['N/A'])[0] if indicators.get('support_levels') else 'N/A'}
+- Direnç Seviyesi: {indicators.get('resistance_levels', ['N/A'])[0] if indicators.get('resistance_levels') else 'N/A'}
 - Trend: {indicators.get('trend', 'N/A')}
 """
 
         if news_sentiment:
-            prompt += f"\n**News Sentiment:** {news_sentiment}\n"
+            prompt += f"\n**Haber Duyarlılığı:** {news_sentiment}\n"
 
         prompt += """
-**Task:** Provide a trading signal based on comprehensive technical analysis.
+**Görev:** Kapsamlı teknik analize dayalı bir alım satım sinyali ver.
 
-**Response Format (strict):**
+**Cevap Formatı (kesinlikle uyulmalı):**
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [Detailed analysis covering: trend alignment, indicator convergence, support/resistance levels, risk factors, and entry/exit considerations. 2-4 sentences.]
+REASONING: [Detaylı analiz: trend uyumu, gösterge yakınsaması, destek/direnç seviyeleri, risk faktörleri ve giriş/çıkış noktaları. Türkçe olarak 2-4 cümle.]
 """
         return prompt
 

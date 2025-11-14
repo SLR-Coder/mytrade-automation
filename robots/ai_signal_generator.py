@@ -77,43 +77,56 @@ def get_latest_market_data(ws, cols) -> List[Dict]:
             continue
 
         try:
-            price = float(row[cols.C - 1]) if len(row) > cols.C - 1 and row[cols.C - 1] else 0
+            # Handle Turkish locale (comma as decimal separator)
+            price_str = row[cols.C - 1] if len(row) > cols.C - 1 and row[cols.C - 1] else "0"
+            price_str = price_str.replace(",", ".")
+            price = float(price_str)
         except:
             price = 0
 
         # Parse indicators
         indicators = {}
         try:
+            def parse_float(value):
+                """Parse float handling Turkish locale"""
+                if not value:
+                    return None
+                return float(str(value).replace(",", "."))
+
             if len(row) > cols.F - 1 and row[cols.F - 1]:
-                indicators['rsi'] = float(row[cols.F - 1])
+                indicators['rsi'] = parse_float(row[cols.F - 1])
             if len(row) > cols.G - 1 and row[cols.G - 1]:
-                indicators['macd'] = float(row[cols.G - 1])
+                indicators['macd'] = parse_float(row[cols.G - 1])
             if len(row) > cols.H - 1 and row[cols.H - 1]:
-                indicators['macd_signal'] = float(row[cols.H - 1])
+                indicators['macd_signal'] = parse_float(row[cols.H - 1])
             if len(row) > cols.I - 1 and row[cols.I - 1]:
-                indicators['macd_histogram'] = float(row[cols.I - 1])
+                indicators['macd_histogram'] = parse_float(row[cols.I - 1])
             if len(row) > cols.J - 1 and row[cols.J - 1]:
-                indicators['bb_upper'] = float(row[cols.J - 1])
+                indicators['bb_upper'] = parse_float(row[cols.J - 1])
             if len(row) > cols.K - 1 and row[cols.K - 1]:
-                indicators['bb_middle'] = float(row[cols.K - 1])
+                indicators['bb_middle'] = parse_float(row[cols.K - 1])
             if len(row) > cols.L - 1 and row[cols.L - 1]:
-                indicators['bb_lower'] = float(row[cols.L - 1])
+                indicators['bb_lower'] = parse_float(row[cols.L - 1])
             if len(row) > cols.M - 1 and row[cols.M - 1]:
-                indicators['ema_9'] = float(row[cols.M - 1])
+                indicators['ema_9'] = parse_float(row[cols.M - 1])
             if len(row) > cols.N - 1 and row[cols.N - 1]:
-                indicators['ema_21'] = float(row[cols.N - 1])
+                indicators['ema_21'] = parse_float(row[cols.N - 1])
             if len(row) > cols.O - 1 and row[cols.O - 1]:
-                indicators['ema_50'] = float(row[cols.O - 1])
+                indicators['ema_50'] = parse_float(row[cols.O - 1])
             if len(row) > cols.P - 1 and row[cols.P - 1]:
-                indicators['ema_200'] = float(row[cols.P - 1])
+                indicators['ema_200'] = parse_float(row[cols.P - 1])
 
             # Support/Resistance
             support_levels = []
             resistance_levels = []
             if len(row) > cols.Q - 1 and row[cols.Q - 1]:
-                support_levels.append(float(row[cols.Q - 1]))
+                val = parse_float(row[cols.Q - 1])
+                if val:
+                    support_levels.append(val)
             if len(row) > cols.R - 1 and row[cols.R - 1]:
-                resistance_levels.append(float(row[cols.R - 1]))
+                val = parse_float(row[cols.R - 1])
+                if val:
+                    resistance_levels.append(val)
 
             indicators['support_levels'] = support_levels
             indicators['resistance_levels'] = resistance_levels
