@@ -10,6 +10,76 @@ from datetime import datetime
 
 logger = logging.getLogger("TelegramFormatter")
 
+
+# ============================================================================
+# YASAL SORUMLULUK UYARISI (Legal Disclaimer)
+# ============================================================================
+
+def get_disclaimer() -> str:
+    """
+    Yasal sorumluluk uyarısı - Her mesajda gösterilmeli
+
+    Returns:
+        HTML formatted disclaimer text
+    """
+    return (
+        "\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <b>YASAL UYARI</b>\n\n"
+        "Bu mesajlar <b>yalnızca bilgilendirme amaçlıdır</b> ve "
+        "<b>yatırım tavsiyesi değildir</b>. "
+        "Yapay zeka tarafından üretilen analizlerdir.\n\n"
+        "• Yatırım kararlarınızı kendi araştırmanıza dayandırın\n"
+        "• Geçmiş performans gelecek getiriyi garanti etmez\n"
+        "• Yatırımlarınız değer kaybedebilir\n"
+        "• Kaybetmeyi göze alamayacağınız parayı yatırmayın\n"
+        "• Mutlaka Stop Loss kullanın\n\n"
+        "<i>🤖 AI Models: GPT-4, Claude Opus 4, Gemini 2.5 Pro</i>"
+    )
+
+
+def get_performance_badge(win_rate: float = 0.0, total_signals: int = 0, period: str = "30 gün") -> str:
+    """
+    Performans göstergesi - Şeffaflık için
+
+    Args:
+        win_rate: Kazanma oranı (0-100)
+        total_signals: Toplam sinyal sayısı
+        period: Periyod açıklaması (örn: "30 gün", "7 gün")
+
+    Returns:
+        HTML formatted performance badge
+    """
+    if total_signals == 0:
+        return "\n\n📊 <i>Performans verileri henüz yeterli değil.</i>"
+
+    # Emoji seçimi
+    if win_rate >= 70:
+        emoji = "🟢"
+        status = "Mükemmel"
+    elif win_rate >= 60:
+        emoji = "🟢"
+        status = "İyi"
+    elif win_rate >= 50:
+        emoji = "🟡"
+        status = "Orta"
+    else:
+        emoji = "🔴"
+        status = "Zayıf"
+
+    return (
+        "\n\n"
+        f"📊 <b>Geçmiş Performans ({period})</b>:\n"
+        f"{emoji} Win Rate: <b>{win_rate:.1f}%</b> ({status})\n"
+        f"📍 Toplam Sinyal: {total_signals}\n"
+        f"<i>⚠️ Geçmiş performans gelecek getiriyi garanti etmez.</i>"
+    )
+
+
+# ============================================================================
+# MESAJ FORMATLAMA FONKSİYONLARI
+# ============================================================================
+
 def format_trading_signal(
     market: str,
     signal: str,
@@ -61,6 +131,9 @@ def format_trading_signal(
     if len(reasoning) > 200:
         message += "..."
 
+    # Add legal disclaimer (ZORUNLU - Yasal koruma için)
+    message += get_disclaimer()
+
     return message
 
 def format_performance_report(metrics: Dict) -> str:
@@ -93,6 +166,9 @@ def format_performance_report(metrics: Dict) -> str:
         message += f"✅ Successful: {metrics.get('successful_signals', 0)}\n"
         message += f"❌ Failed: {metrics.get('failed_signals', 0)}\n"
         message += f"⏳ Pending: {metrics.get('pending_signals', 0)}\n"
+
+    # Add disclaimer for transparency
+    message += get_disclaimer()
 
     return message
 
