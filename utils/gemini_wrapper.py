@@ -17,13 +17,13 @@ logger = logging.getLogger("Gemini-Wrapper")
 class GeminiClient:
     """Wrapper for Google Gemini API"""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-pro"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-exp"):
         """
         Initialize Gemini client
 
         Args:
             api_key: Google API key (if None, fetches from secrets)
-            model: Model to use (default: gemini-2.5-pro)
+            model: Model to use (default: gemini-2.0-flash-exp, less strict safety filters)
         """
         self.api_key = api_key or get_secret("GEMINI_API_KEY")
         self.model_name = model

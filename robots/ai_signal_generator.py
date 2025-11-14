@@ -185,19 +185,26 @@ async def run():
 
             logger.info(f"\n📊 Analyzing {market} @ ${price:,.2f}")
 
-            # Get Gemini signal (only available in TEST mode)
-            gemini_signal = get_gemini_signal(market, price, indicators)
+            # Get Claude signal (primary AI in TEST mode)
+            ai_signal = get_claude_signal(market, price, indicators)
+            ai_name = "Claude"
 
-            if not gemini_signal:
-                logger.warning(f"  ⚠️ No signal from Gemini for {market}")
-                continue
+            if not ai_signal:
+                logger.warning(f"  ⚠️ Claude sinyali alınamadı, Gemini deneniyor...")
+                # Fallback to Gemini
+                ai_signal = get_gemini_signal(market, price, indicators)
+                ai_name = "Gemini"
 
-            # In TEST mode, use Gemini signal as final signal (no ensemble)
-            final_signal = gemini_signal["signal"]
-            final_confidence = gemini_signal["confidence"]
-            reasoning = gemini_signal["reasoning"][:500]  # Truncate for Sheets
+                if not ai_signal:
+                    logger.warning(f"  ⚠️ Hiçbir AI sinyali alınamadı: {market}")
+                    continue
 
-            logger.info(f"  🎯 Gemini: {gemini_signal['signal']} ({gemini_signal['confidence']}%)")
+            # In TEST mode, use single AI signal as final signal (no ensemble)
+            final_signal = ai_signal["signal"]
+            final_confidence = ai_signal["confidence"]
+            reasoning = ai_signal["reasoning"][:500]  # Truncate for Sheets
+
+            logger.info(f"  🎯 {ai_name}: {ai_signal['signal']} ({ai_signal['confidence']}%)")
             logger.info(f"  ✅ Final: {final_signal} ({final_confidence}%)")
 
             # Calculate risk/reward levels
@@ -208,11 +215,17 @@ async def run():
                 # Column V: GPT-4 Signal (N/A in TEST)
                 ws.update_cell(row_index, cols.V, "N/A (TEST)")
 
-                # Column W: Claude Signal (N/A in TEST)
-                ws.update_cell(row_index, cols.W, "N/A (TEST)")
+                # Column W: Claude Signal
+                if ai_name == "Claude":
+                    ws.update_cell(row_index, cols.W, f"{ai_signal['signal']} ({ai_signal['confidence']}%)")
+                else:
+                    ws.update_cell(row_index, cols.W, "N/A")
 
                 # Column X: Gemini Signal
-                ws.update_cell(row_index, cols.X, f"{gemini_signal['signal']} ({gemini_signal['confidence']}%)")
+                if ai_name == "Gemini":
+                    ws.update_cell(row_index, cols.X, f"{ai_signal['signal']} ({ai_signal['confidence']}%)")
+                else:
+                    ws.update_cell(row_index, cols.X, "N/A")
 
                 # Column Y: Final Signal (Ensemble)
                 ws.update_cell(row_index, cols.Y, final_signal)
