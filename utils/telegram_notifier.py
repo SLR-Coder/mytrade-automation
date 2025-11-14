@@ -56,7 +56,7 @@ async def send_error_notification(
     max_retries: int = 3
 ) -> bool:
     """
-    Send error notification to Telegram
+    Send error notification to Telegram ADMIN (private chat)
 
     Args:
         robot_name: Name of the robot that failed
@@ -70,11 +70,14 @@ async def send_error_notification(
     from utils.telegram_formatter import format_error_notification
 
     message = format_error_notification(robot_name, error, attempt, max_retries)
-    return await send_telegram_message(message)
+
+    # Send to ADMIN private chat, not public channel
+    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    return await send_telegram_message(message, chat_id=admin_chat_id)
 
 async def send_status_notification(status: str) -> bool:
     """
-    Send status notification to Telegram
+    Send status notification to Telegram ADMIN (private chat)
 
     Args:
         status: Status message
@@ -83,4 +86,7 @@ async def send_status_notification(status: str) -> bool:
         Success status
     """
     message = f"ℹ️ <b>System Status</b>\n\n{status}"
-    return await send_telegram_message(message)
+
+    # Send to ADMIN private chat, not public channel
+    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    return await send_telegram_message(message, chat_id=admin_chat_id)
