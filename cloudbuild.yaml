@@ -1,0 +1,38 @@
+steps:
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/mytrade-repo/mytrade:latest',
+      '.'
+    ]
+
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      'europe-west1-docker.pkg.dev/$PROJECT_ID/mytrade-repo/mytrade:latest'
+    ]
+
+  # Deploy to Cloud Run Job
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'jobs'
+      - 'deploy'
+      - 'mytrade-automation-job'
+      - '--region=europe-west1'
+      - '--image=europe-west1-docker.pkg.dev/$PROJECT_ID/mytrade-repo/mytrade:latest'
+      - '--service-account=mytrade-robot@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-secrets=GOOGLE_SHEET_ID=GOOGLE_SHEET_ID:latest,POLYGON_API_KEY=POLYGON_API_KEY:latest,ALPHA_VANTAGE_KEY=ALPHA_VANTAGE_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_CHAT_ID=TELEGRAM_CHAT_ID:latest'
+      - '--set-env-vars=GCP_PROJECT=$PROJECT_ID,SHEET_TAB=MarketData,CANDLE_LIMIT=200,ROBOT=1'
+      - '--max-retries=1'
+      - '--task-timeout=3600s'
+      - '--memory=4Gi'
+      - '--cpu=2'
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/mytrade-repo/mytrade:latest'
+
+timeout: 1200s

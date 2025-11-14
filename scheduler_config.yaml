@@ -1,0 +1,116 @@
+# Cloud Scheduler Configuration for MyTrade
+# All times in Turkey Time (GMT+3)
+# Format: minute hour day month day-of-week
+
+# =============================================================================
+# HOURLY MARKET UPDATES (Her saat başı)
+# =============================================================================
+hourly_update:
+  schedule: "0 * * * *"
+  timezone: "Europe/Istanbul"
+  description: "Hourly market price update and quick analysis"
+  robots: "1,5"
+  env_vars:
+    ROBOT: "1,5"
+    MESSAGE_TYPE: "hourly_update"
+    MIN_CONFIDENCE: "70"
+
+# =============================================================================
+# FOREX SESSION SCHEDULES (Piyasa saatleri)
+# =============================================================================
+
+# PRE-LONDON ANALYSIS (10:00 Turkey Time)
+pre_london:
+  schedule: "0 10 * * 1-5"
+  timezone: "Europe/Istanbul"
+  description: "Pre-London session analysis (1 hour before open)"
+  robots: "1,2,3,4,5"
+  env_vars:
+    ROBOT: "1,2,3,4,5"
+    MESSAGE_TYPE: "pre_session"
+    SESSION_NAME: "LONDON"
+    SESSION_TIME: "11:00"
+    MIN_CONFIDENCE: "65"
+
+# LONDON OPEN (11:00 Turkey Time)
+london_open:
+  schedule: "0 11 * * 1-5"
+  timezone: "Europe/Istanbul"
+  description: "London session open - Full signals"
+  robots: "1,2,3,4,5,6"
+  env_vars:
+    ROBOT: "1,2,3,4,5,6"
+    MESSAGE_TYPE: "session_open"
+    SESSION_NAME: "LONDON"
+    MIN_CONFIDENCE: "60"
+
+# PRE-NEW YORK ANALYSIS (15:00 Turkey Time)
+pre_newyork:
+  schedule: "0 15 * * 1-5"
+  timezone: "Europe/Istanbul"
+  description: "Pre-New York session analysis (1 hour before open)"
+  robots: "1,2,3,4,5"
+  env_vars:
+    ROBOT: "1,2,3,4,5"
+    MESSAGE_TYPE: "pre_session"
+    SESSION_NAME: "NEW_YORK"
+    SESSION_TIME: "16:00"
+    MIN_CONFIDENCE: "65"
+
+# NEW YORK OPEN (16:00 Turkey Time)
+newyork_open:
+  schedule: "0 16 * * 1-5"
+  timezone: "Europe/Istanbul"
+  description: "New York session open - Full signals"
+  robots: "1,2,3,4,5,6"
+  env_vars:
+    ROBOT: "1,2,3,4,5,6"
+    MESSAGE_TYPE: "session_open"
+    SESSION_NAME: "NEW_YORK"
+    MIN_CONFIDENCE: "60"
+
+# PEAK VOLATILITY (17:00 Turkey Time - London+NY Overlap)
+peak_volatility:
+  schedule: "0 17 * * 1-5"
+  timezone: "Europe/Istanbul"
+  description: "Peak volatility period (London+NY overlap)"
+  robots: "1,3,5"
+  env_vars:
+    ROBOT: "1,3,5"
+    MESSAGE_TYPE: "peak_volatility"
+    MIN_CONFIDENCE: "70"
+
+# DAILY SUMMARY (20:00 Turkey Time - London Close)
+daily_summary:
+  schedule: "0 20 * * 1-5"
+  timezone: "Europe/Istanbul"
+  description: "Daily performance summary"
+  robots: "6,5"
+  env_vars:
+    ROBOT: "6,5"
+    MESSAGE_TYPE: "daily_summary"
+
+# WEEKLY SUMMARY (Friday 21:00 Turkey Time)
+weekly_summary:
+  schedule: "0 21 * * 5"
+  timezone: "Europe/Istanbul"
+  description: "Weekly performance summary"
+  robots: "6,5"
+  env_vars:
+    ROBOT: "6,5"
+    MESSAGE_TYPE: "weekly_summary"
+
+# =============================================================================
+# HEALTH CHECK (Continuous monitoring)
+# =============================================================================
+health_check:
+  schedule: "*/5 * * * *"
+  timezone: "Europe/Istanbul"
+  description: "Health check for all system components"
+  command: "python health_check.py"
+  env_vars:
+    SEND_ALERTS: "true"
+
+# =============================================================================
+# DEPLOYMENT COMMANDS
+# =============================================================================
