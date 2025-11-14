@@ -229,16 +229,16 @@ def write_to_sheet(ws, cols, data_list: List[Dict]):
         # Trend
         row[cols.S - 1] = indicators.get("trend", "")
 
-        # Status
+        # Durum
         row[cols.AH - 1] = status_text(1, True)
-        row[cols.AI - 1] = f"Source: {data.get('source', 'Unknown')}"
+        row[cols.AI - 1] = f"Kaynak: {data.get('source', 'Bilinmiyor')}"
 
         rows_to_add.append(row)
 
-    # Add separator row
+    # Ayırıcı satır ekle
     separator = [""] * row_len
-    separator[cols.A - 1] = f"📊 Market Data Update: {timestamp}"
-    separator[cols.AH - 1] = "Separator"
+    separator[cols.A - 1] = f"📊 Piyasa Verisi Güncelleme: {timestamp}"
+    separator[cols.AH - 1] = "Ayırıcı"
 
     # Write to sheet
     ws.append_rows([separator] + rows_to_add, value_input_option="RAW")

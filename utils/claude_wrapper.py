@@ -76,11 +76,11 @@ class ClaudeClient:
                 return result
 
             except Exception as e:
-                logger.warning(f"Claude attempt {attempt + 1}/{max_retries} failed: {e}")
+                logger.warning(f"Claude deneme {attempt + 1}/{max_retries} başarısız: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2 ** attempt)  # Üstel geri çekilme
                 else:
-                    logger.error(f"Claude failed for {market} after {max_retries} attempts")
+                    logger.error(f"Claude {max_retries} denemeden sonra {market} için başarısız oldu")
                     return None
 
     def _build_prompt(

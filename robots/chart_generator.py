@@ -54,16 +54,16 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         logger.warning("No data in sheet")
         return []
 
-    # Find last separator (marks latest data batch)
+    # Son ayırıcıyı bul (en son veri grubunu işaretler)
     separator_idx = None
     for i in range(len(all_rows) - 1, 0, -1):
         if len(all_rows[i]) > cols.AH - 1:
-            if all_rows[i][cols.AH - 1] == "Separator":
+            if all_rows[i][cols.AH - 1] == "Ayırıcı":
                 separator_idx = i
                 break
 
     if separator_idx is None:
-        logger.warning("No separator found")
+        logger.warning("Ayırıcı bulunamadı")
         data_rows = all_rows[1:]
     else:
         data_rows = all_rows[separator_idx + 1:]

@@ -242,7 +242,7 @@ async def run():
                 try:
                     title = article.get("title", "")
                     description = article.get("description", "")
-                    source = article.get("source", {}).get("name", "Unknown")
+                    source = article.get("source", {}).get("name", "Bilinmiyor")
                     url = article.get("url", "")
                     published_at = datetime.fromisoformat(
                         article.get("publishedAt", "").replace("Z", "+00:00")

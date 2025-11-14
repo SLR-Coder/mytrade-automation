@@ -49,19 +49,19 @@ def get_latest_market_data(ws, cols) -> List[Dict]:
         logger.warning("No data in sheet")
         return []
 
-    # Find last separator (marks latest data batch)
+    # Son ayırıcıyı bul (en son veri grubunu işaretler)
     separator_idx = None
     for i in range(len(all_rows) - 1, 0, -1):
         if len(all_rows[i]) > cols.AH - 1:
-            if all_rows[i][cols.AH - 1] == "Separator":
+            if all_rows[i][cols.AH - 1] == "Ayırıcı":
                 separator_idx = i
                 break
 
     if separator_idx is None:
-        logger.warning("No separator found, using all data")
-        data_rows = all_rows[1:]  # Skip header
+        logger.warning("Ayırıcı bulunamadı, tüm veriler kullanılıyor")
+        data_rows = all_rows[1:]  # Başlığı atla
     else:
-        # Get rows after last separator
+        # Son ayırıcıdan sonraki satırları al
         data_rows = all_rows[separator_idx + 1:]
 
     logger.info(f"Found {len(data_rows)} markets in latest batch")
@@ -210,42 +210,42 @@ async def run():
             # Calculate risk/reward levels
             tp1, tp2, sl = calculate_risk_reward(price, final_signal, indicators)
 
-            # Write signals to Google Sheets
+            # Sinyalleri Google Sheets'e yaz
             try:
-                # Column V: GPT-4 Signal (N/A in TEST)
-                ws.update_cell(row_index, cols.V, "N/A (TEST)")
+                # Kolon V: GPT-4 Sinyali (TEST modunda yok)
+                ws.update_cell(row_index, cols.V, "Yok (TEST)")
 
-                # Column W: Claude Signal
+                # Kolon W: Claude Sinyali
                 if ai_name == "Claude":
                     ws.update_cell(row_index, cols.W, f"{ai_signal['signal']} ({ai_signal['confidence']}%)")
                 else:
-                    ws.update_cell(row_index, cols.W, "N/A")
+                    ws.update_cell(row_index, cols.W, "Yok")
 
-                # Column X: Gemini Signal
+                # Kolon X: Gemini Sinyali
                 if ai_name == "Gemini":
                     ws.update_cell(row_index, cols.X, f"{ai_signal['signal']} ({ai_signal['confidence']}%)")
                 else:
-                    ws.update_cell(row_index, cols.X, "N/A")
+                    ws.update_cell(row_index, cols.X, "Yok")
 
-                # Column Y: Final Signal (Ensemble)
+                # Kolon Y: Nihai Sinyal (Topluluk)
                 ws.update_cell(row_index, cols.Y, final_signal)
 
-                # Column Z: Confidence
+                # Kolon Z: Güven
                 ws.update_cell(row_index, cols.Z, f"{final_confidence}%")
 
-                # Column AA: AI Reasoning
+                # Kolon AA: AI Gerekçesi
                 ws.update_cell(row_index, cols.AA, reasoning)
 
-                # Column AB: Take Profit 1
+                # Kolon AB: Kar Al 1
                 ws.update_cell(row_index, cols.AB, f"${tp1:,.2f}" if tp1 else "")
 
-                # Column AC: Take Profit 2
+                # Kolon AC: Kar Al 2
                 ws.update_cell(row_index, cols.AC, f"${tp2:,.2f}" if tp2 else "")
 
-                # Column AD: Stop Loss
+                # Kolon AD: Zarar Durdur
                 ws.update_cell(row_index, cols.AD, f"${sl:,.2f}" if sl else "")
 
-                # Column AE: Robot 3 Status
+                # Kolon AE: Robot 3 Durumu
                 ws.update_cell(row_index, cols.AE, status_text(3, True))
 
                 signals_generated += 1

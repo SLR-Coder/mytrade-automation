@@ -10,45 +10,45 @@ from typing import List
 logger = logging.getLogger("Schema")
 
 class ColumnMapping:
-    """Column mapping for Google Sheets"""
-    A = 1   # Timestamp
-    B = 2   # Market
-    C = 3   # Price
-    D = 4   # Change %
-    E = 5   # Volume
+    """Google Sheets için sütun eşlemesi"""
+    A = 1   # Zaman Damgası
+    B = 2   # Piyasa
+    C = 3   # Fiyat
+    D = 4   # Değişim %
+    E = 5   # Hacim
     F = 6   # RSI
     G = 7   # MACD
-    H = 8   # MACD Signal
+    H = 8   # MACD Sinyal
     I = 9   # MACD Histogram
-    J = 10  # BB Upper
-    K = 11  # BB Middle
-    L = 12  # BB Lower
+    J = 10  # BB Üst
+    K = 11  # BB Orta
+    L = 12  # BB Alt
     M = 13  # EMA 9
     N = 14  # EMA 21
     O = 15  # EMA 50
     P = 16  # EMA 200
-    Q = 17  # Support
-    R = 18  # Resistance
-    S = 19  # Trend
-    T = 20  # News Summary
-    U = 21  # News Sentiment
-    V = 22  # GPT-4 Signal
-    W = 23  # Claude Signal
-    X = 24  # Gemini Signal
-    Y = 25  # Final Signal
-    Z = 26  # Confidence
-    AA = 27 # AI Reasoning
-    AB = 28 # Entry Price
-    AC = 29 # Stop Loss
-    AD = 30 # Take Profit 1
-    AE = 31 # Take Profit 2
-    AF = 32 # Risk/Reward
-    AG = 33 # Position Size
-    AH = 34 # Status
-    AI = 35 # Notes
-    AJ = 36 # Reserved
-    AK = 37 # Reserved
-    AL = 38 # Reserved
+    Q = 17  # Destek
+    R = 18  # Direnç
+    S = 19  # Eğilim
+    T = 20  # Haber Özeti
+    U = 21  # Haber Duyarlılığı
+    V = 22  # GPT-4 Sinyali
+    W = 23  # Claude Sinyali
+    X = 24  # Gemini Sinyali
+    Y = 25  # Nihai Sinyal
+    Z = 26  # Güven
+    AA = 27 # AI Gerekçesi
+    AB = 28 # Giriş Fiyatı
+    AC = 29 # Zarar Durdur
+    AD = 30 # Kar Al 1
+    AE = 31 # Kar Al 2
+    AF = 32 # Risk/Ödül
+    AG = 33 # Pozisyon Büyüklüğü
+    AH = 34 # Durum
+    AI = 35 # Notlar
+    AJ = 36 # Yedek
+    AK = 37 # Yedek
+    AL = 38 # Yedek
 
 def create_header_row() -> List[str]:
     """
@@ -58,44 +58,44 @@ def create_header_row() -> List[str]:
         List of column headers
     """
     headers = [
-        "Timestamp",          # A
-        "Market",            # B
-        "Price",             # C
-        "Change %",          # D
-        "Volume",            # E
+        "Zaman Damgası",     # A
+        "Piyasa",            # B
+        "Fiyat",             # C
+        "Değişim %",         # D
+        "Hacim",             # E
         "RSI",               # F
         "MACD",              # G
-        "MACD Signal",       # H
+        "MACD Sinyal",       # H
         "MACD Hist",         # I
-        "BB Upper",          # J
-        "BB Middle",         # K
-        "BB Lower",          # L
+        "BB Üst",            # J
+        "BB Orta",           # K
+        "BB Alt",            # L
         "EMA 9",             # M
         "EMA 21",            # N
         "EMA 50",            # O
         "EMA 200",           # P
-        "Support",           # Q
-        "Resistance",        # R
-        "Trend",             # S
-        "News Summary",      # T
-        "News Sentiment",    # U
-        "GPT-4 Signal",      # V
-        "Claude Signal",     # W
-        "Gemini Signal",     # X
-        "Final Signal",      # Y
-        "Confidence %",      # Z
-        "AI Reasoning",      # AA
-        "Entry Price",       # AB
-        "Stop Loss",         # AC
-        "Take Profit 1",     # AD
-        "Take Profit 2",     # AE
-        "Risk/Reward",       # AF
-        "Position Size %",   # AG
-        "Status",            # AH
-        "Notes",             # AI
-        "Reserved",          # AJ
-        "Reserved",          # AK
-        "Reserved"           # AL
+        "Destek",            # Q
+        "Direnç",            # R
+        "Eğilim",            # S
+        "Haber Özeti",       # T
+        "Haber Duyarlılığı", # U
+        "GPT-4 Sinyali",     # V
+        "Claude Sinyali",    # W
+        "Gemini Sinyali",    # X
+        "Nihai Sinyal",      # Y
+        "Güven %",           # Z
+        "AI Gerekçesi",      # AA
+        "Giriş Fiyatı",      # AB
+        "Zarar Durdur",      # AC
+        "Kar Al 1",          # AD
+        "Kar Al 2",          # AE
+        "Risk/Ödül",         # AF
+        "Pozisyon Büyüklüğü %", # AG
+        "Durum",             # AH
+        "Notlar",            # AI
+        "Yedek",             # AJ
+        "Yedek",             # AK
+        "Yedek"              # AL
     ]
     return headers
 

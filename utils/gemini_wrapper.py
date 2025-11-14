@@ -87,10 +87,10 @@ class GeminiClient:
                 # Send message
                 response = chat.send_message(prompt)
 
-                # Check if response was blocked by safety filters
+                # Yanıtın güvenlik filtreleri tarafından engellenip engellenmediğini kontrol et
                 if not response.candidates or not response.candidates[0].content.parts:
-                    logger.warning(f"Gemini blocked response for {market} (safety filter)")
-                    # Return a default HOLD signal when blocked
+                    logger.warning(f"Gemini yanıtı {market} için engellendi (güvenlik filtresi)")
+                    # Engellendiğinde varsayılan HOLD sinyali döndür
                     return {
                         "signal": "HOLD",
                         "confidence": 50,
@@ -105,12 +105,12 @@ class GeminiClient:
                 return result
 
             except Exception as e:
-                logger.warning(f"Gemini attempt {attempt + 1}/{max_retries} failed: {e}")
+                logger.warning(f"Gemini deneme {attempt + 1}/{max_retries} başarısız: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2 ** attempt)  # Üstel geri çekilme
                 else:
-                    logger.error(f"Gemini failed for {market} after {max_retries} attempts")
-                    # Return default HOLD on complete failure
+                    logger.error(f"Gemini {max_retries} denemeden sonra {market} için başarısız oldu")
+                    # Tam başarısızlıkta varsayılan HOLD döndür
                     return {
                         "signal": "HOLD",
                         "confidence": 50,
