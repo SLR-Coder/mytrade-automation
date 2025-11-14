@@ -87,6 +87,16 @@ class GeminiClient:
                 # Send message
                 response = chat.send_message(prompt)
 
+                # Check if response was blocked by safety filters
+                if not response.candidates or not response.candidates[0].content.parts:
+                    logger.warning(f"Gemini blocked response for {market} (safety filter)")
+                    # Return a default HOLD signal when blocked
+                    return {
+                        "signal": "HOLD",
+                        "confidence": 50,
+                        "reasoning": "Gemini güvenlik filtreleri nedeniyle analiz yapılamadı. Varsayılan: HOLD"
+                    }
+
                 # Parse response
                 content = response.text
                 result = self._parse_response(content, market)
@@ -100,7 +110,12 @@ class GeminiClient:
                     time.sleep(2 ** attempt)  # Exponential backoff
                 else:
                     logger.error(f"Gemini failed for {market} after {max_retries} attempts")
-                    return None
+                    # Return default HOLD on complete failure
+                    return {
+                        "signal": "HOLD",
+                        "confidence": 50,
+                        "reasoning": f"Gemini API hatası: {str(e)[:100]}"
+                    }
 
     def _build_prompt(
         self,
