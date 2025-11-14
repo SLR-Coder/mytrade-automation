@@ -19,11 +19,13 @@ scipy==1.13.0
 # Technical Analysis
 TA-Lib==0.4.32
 ta==0.11.0
+pandas-ta==0.3.14b0
 
 # HTTP & API Clients
 httpx==0.27.0
 requests==2.32.3
 websocket-client==1.8.0
+ccxt==4.1.0
 
 # Google Sheets Integration
 gspread==6.2.0

@@ -8,6 +8,7 @@ import os
 import logging
 import asyncio
 from typing import Optional
+from datetime import datetime
 from telegram import Bot
 from telegram.constants import ParseMode
 from utils.secrets import get_secret
@@ -86,6 +87,42 @@ async def send_status_notification(status: str) -> bool:
         Success status
     """
     message = f"ℹ️ <b>System Status</b>\n\n{status}"
+
+    # Send to ADMIN private chat, not public channel
+    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    return await send_telegram_message(message, chat_id=admin_chat_id)
+
+async def send_health_alert(component: str, status: str, details: str = None) -> bool:
+    """
+    Send health check alert to Telegram ADMIN (private chat)
+
+    Args:
+        component: Component name that triggered the alert
+        status: Status level (CRITICAL, WARNING, HEALTHY)
+        details: Optional error details
+
+    Returns:
+        Success status
+    """
+    # Status emoji mapping
+    emoji_map = {
+        "CRITICAL": "🔴",
+        "WARNING": "⚠️",
+        "HEALTHY": "✅"
+    }
+
+    emoji = emoji_map.get(status, "ℹ️")
+
+    message = (
+        f"{emoji} <b>Health Alert</b>\n\n"
+        f"🔧 Component: {component}\n"
+        f"📊 Status: {status}\n"
+    )
+
+    if details:
+        message += f"📝 Details: {details}\n"
+
+    message += f"⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
     # Send to ADMIN private chat, not public channel
     admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)

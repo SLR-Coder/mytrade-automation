@@ -10,6 +10,7 @@ import time
 import datetime
 import pytz
 import logging
+import asyncio
 from typing import Dict, List, Optional
 from pathlib import Path
 from telegram import Bot
@@ -258,9 +259,9 @@ def find_chart_for_market(market: str) -> Optional[str]:
         return None
 
 
-def send_to_telegram(bot_token: str, chat_id: str, message: str, signals: List[Dict] = None) -> bool:
+async def send_to_telegram_async(bot_token: str, chat_id: str, message: str, signals: List[Dict] = None) -> bool:
     """
-    Send message and charts to Telegram
+    Send message and charts to Telegram (async)
 
     Args:
         bot_token: Telegram bot token
@@ -274,7 +275,7 @@ def send_to_telegram(bot_token: str, chat_id: str, message: str, signals: List[D
     try:
         bot = Bot(token=bot_token)
 
-        bot.send_message(
+        await bot.send_message(
             chat_id=chat_id,
             text=message,
             parse_mode=ParseMode.HTML,
@@ -292,14 +293,14 @@ def send_to_telegram(bot_token: str, chat_id: str, message: str, signals: List[D
                     try:
                         with open(chart_path, 'rb') as chart_file:
                             caption = f"{signal['market']} - {signal['ensemble_signal']} ({signal['ensemble_confidence']}%)"
-                            bot.send_photo(
+                            await bot.send_photo(
                                 chat_id=chat_id,
                                 photo=chart_file,
                                 caption=caption
                             )
                             charts_sent += 1
                             logger.info(f"✓ Chart sent for {signal['market']}")
-                            time.sleep(1)
+                            await asyncio.sleep(1)
                     except Exception as e:
                         logger.warning(f"Failed to send chart for {signal['market']}: {e}")
                         continue
@@ -312,6 +313,22 @@ def send_to_telegram(bot_token: str, chat_id: str, message: str, signals: List[D
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
         return False
+
+
+def send_to_telegram(bot_token: str, chat_id: str, message: str, signals: List[Dict] = None) -> bool:
+    """
+    Send message and charts to Telegram (sync wrapper)
+
+    Args:
+        bot_token: Telegram bot token
+        chat_id: Chat ID or channel username
+        message: Message to send
+        signals: Optional list of signals (for charts)
+
+    Returns:
+        Success boolean
+    """
+    return asyncio.run(send_to_telegram_async(bot_token, chat_id, message, signals))
 
 
 def run():

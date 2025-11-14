@@ -4,8 +4,7 @@ Market data database model
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, Integer, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, String, Float, DateTime, Integer, Index, JSON
 from core.database import Base
 
 
@@ -29,8 +28,8 @@ class MarketDataModel(Base):
     # Change
     change_percent = Column(Float)
 
-    # Technical indicators (stored as JSON for flexibility)
-    indicators = Column(JSONB, default={})
+    # Technical indicators (stored as JSON for compatibility with both PostgreSQL and SQLite)
+    indicators = Column(JSON, default={})
 
     # Composite index for faster queries
     __table_args__ = (

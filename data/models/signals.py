@@ -4,8 +4,7 @@ AI signals database model
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, Integer, Text, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, String, Float, DateTime, Integer, Text, Index, JSON
 from core.database import Base
 
 
@@ -45,8 +44,8 @@ class SignalModel(Base):
     # News sentiment
     news_sentiment = Column(Float)  # -1 to +1
 
-    # Metadata
-    signal_metadata = Column(JSONB, default={})
+    # Metadata (using JSON for compatibility with both PostgreSQL and SQLite)
+    signal_metadata = Column(JSON, default={})
 
     # Performance tracking (updated after signal closes)
     actual_outcome = Column(String(20))  # "hit_tp1", "hit_tp2", "hit_sl", "pending"

@@ -4,8 +4,7 @@ Performance tracking database model
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, Integer, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, String, Float, DateTime, Integer, Index, JSON
 from core.database import Base
 
 
@@ -49,8 +48,8 @@ class PerformanceModel(Base):
     sharpe_ratio = Column(Float)
     max_drawdown_percent = Column(Float)
 
-    # Metadata
-    perf_metadata = Column(JSONB, default={})
+    # Metadata (using JSON for compatibility with both PostgreSQL and SQLite)
+    perf_metadata = Column(JSON, default={})
 
     __table_args__ = (
         Index('idx_performance_period', 'period', 'start_date'),

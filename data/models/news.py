@@ -4,8 +4,7 @@ News database model
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, Integer, Text, Index, ARRAY
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, String, Float, DateTime, Integer, Text, Index, JSON
 from core.database import Base
 
 
@@ -30,11 +29,11 @@ class NewsModel(Base):
     sentiment_label = Column(String(20))  # positive, negative, neutral
     impact = Column(String(10))  # HIGH, MEDIUM, LOW
 
-    # Related markets
-    related_markets = Column(JSONB, default=[])
+    # Related markets (using JSON for compatibility with both PostgreSQL and SQLite)
+    related_markets = Column(JSON, default=[])
 
-    # Metadata
-    signal_metadata = Column(JSONB, default={})
+    # Metadata (using JSON for compatibility with both PostgreSQL and SQLite)
+    signal_metadata = Column(JSON, default={})
 
     __table_args__ = (
         Index('idx_news_published', 'published_at'),
