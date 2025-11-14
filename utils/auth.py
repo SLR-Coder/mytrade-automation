@@ -39,6 +39,14 @@ def get_gspread_client():
     except:
         pass
 
-    # Default to ADC (Application Default Credentials)
-    logger.info("Using Application Default Credentials")
-    return gspread.authorize()
+    # Default to ADC (Application Default Credentials) for Cloud Run
+    logger.info("Using Application Default Credentials (Workload Identity)")
+    from google.auth import default
+
+    scopes = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
+
+    credentials, project = default(scopes=scopes)
+    return gspread.authorize(credentials)
