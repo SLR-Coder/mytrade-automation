@@ -46,14 +46,20 @@ class EnsembleSignalGenerator:
         self.timeout = timeout
         self.max_retries = max_retries
 
-        # Load API keys
+        # Load API keys (all optional)
+        # 🧪 TEST MODE: Only provide GEMINI_API_KEY for minimal cost
+        # 🚀 LIVE MODE: Provide all 3 keys for best accuracy
         self.openai_key = get_secret("OPENAI_API_KEY", required=False)
         self.anthropic_key = get_secret("ANTHROPIC_API_KEY", required=False)
         self.google_key = get_secret("GEMINI_API_KEY", required=False)
 
         # Check at least one AI is available
         if not (self.openai_key or self.anthropic_key or self.google_key):
-            raise ValueError("At least one AI API key must be configured")
+            raise ValueError(
+                "❌ At least one AI API key must be configured!\n"
+                "TEST: Add GEMINI_API_KEY to Secret Manager\n"
+                "LIVE: Add OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY"
+            )
 
         logger.info(
             f"Initialized ensemble with: "

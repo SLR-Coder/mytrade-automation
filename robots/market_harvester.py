@@ -25,14 +25,20 @@ logger = logging.getLogger("Robot-1-MarketHarvester")
 SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
 CANDLE_LIMIT = int(os.getenv("CANDLE_LIMIT", "200"))  # For technical indicators
 
-# Markets to track
-# FOREX temporarily disabled (Alpha Vantage free tier rate limits)
-# Will re-enable with Polygon.io premium or alternative API
+# ============================================================================
+# MARKETS TO TRACK
+# ============================================================================
+# 🧪 TEST MODE: Only Crypto + Commodities (FREE APIs)
+# 🚀 LIVE MODE: Add Forex (requires paid API)
+# ============================================================================
+
+# FOREX - DISABLED FOR TEST (Enable when LIVE)
+# Requires: Polygon.io ($199/mo) OR Alpha Vantage ($49/mo)
 FOREX_PAIRS = [
-    # ("USD", "TRY"),
-    # ("EUR", "TRY"),
-    # ("EUR", "USD"),
-    # ("GBP", "USD"),
+    # ("USD", "TRY"),  # 🇹🇷 Dolar/TL
+    # ("EUR", "TRY"),  # 🇹🇷 Euro/TL
+    # ("EUR", "USD"),  # 🇪🇺 Euro/Dolar
+    # ("GBP", "USD"),  # 🇬🇧 Pound/Dolar
 ]
 
 CRYPTO_PAIRS = [
