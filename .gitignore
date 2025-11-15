@@ -25,6 +25,7 @@ ENV/
 service_account.json
 *.json.key
 gcp-credentials.json
+GCP_DEPLOYMENT_REFERENCE.md
 
 # Logs
 *.log
