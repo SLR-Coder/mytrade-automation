@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Robot 8: Personal AI Analyst
-Kullan1c1n1n ki_isel AI analisti - özel prompt ile detayl1 piyasa analizi
+Kullanicinin kisisel AI analisti - ozel prompt ile detayli piyasa analizi
 """
 
 import os
@@ -23,7 +23,7 @@ SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
 
 def status_text(robot_no: int, ok: bool) -> str:
     """Generate status text for robot"""
-    return f"Robot {robot_no} {'' if ok else 'L'}"
+    return f"Robot {robot_no} {'âœ…' if ok else 'âŒ'}"
 
 
 def parse_float(value):
@@ -35,7 +35,7 @@ def parse_float(value):
 
 def get_latest_market_data(ws, cols) -> List[Dict]:
     """Read latest market data from Google Sheets"""
-    logger.info("=Ê Son piyasa verileri okunuyor...")
+    logger.info("Son piyasa verileri okunuyor...")
 
     all_rows = ws.get_all_values()
     if len(all_rows) <= 1:
@@ -45,7 +45,7 @@ def get_latest_market_data(ws, cols) -> List[Dict]:
     separator_idx = None
     for i in range(len(all_rows) - 1, 0, -1):
         if len(all_rows[i]) > cols.AO - 1:
-            if all_rows[i][cols.AO - 1] == "Ay1r1c1":
+            if all_rows[i][cols.AO - 1] == "AyÄ±rÄ±cÄ±":
                 separator_idx = i
                 break
 
@@ -97,7 +97,7 @@ def get_latest_market_data(ws, cols) -> List[Dict]:
             indicators['support_levels'] = support_levels
             indicators['resistance_levels'] = resistance_levels
         except Exception as e:
-            logger.warning(f"Indicator parse hatas1 {market}: {e}")
+            logger.warning(f"Indicator parse hatasi {market}: {e}")
 
         markets_data.append({
             "market": market,
@@ -106,14 +106,14 @@ def get_latest_market_data(ws, cols) -> List[Dict]:
             "row_index": all_rows.index(row) + 1
         })
 
-    logger.info(f" {len(markets_data)} piyasa verisi okundu")
+    logger.info(f"{len(markets_data)} piyasa verisi okundu")
     return markets_data
 
 
 def run():
     """Main execution function for Robot 8"""
     logger.info("=" * 80)
-    logger.info("> ROBOT 8: PERSONAL AI ANALYST (K0^0SEL AI ANAL0Z0) - BA^LAT")
+    logger.info("ROBOT 8: PERSONAL AI ANALYST (KISISEL AI ANALIZI) - BASLAT")
     logger.info("=" * 80)
 
     try:
@@ -124,7 +124,7 @@ def run():
 
         markets_data = get_latest_market_data(ws, cols)
         if not markets_data:
-            logger.warning("  Analiz edilecek piyasa yok")
+            logger.warning("Analiz edilecek piyasa yok")
             return
 
         # Create personal AI analyst
@@ -142,7 +142,7 @@ def run():
             analysis_style=analysis_style
         )
 
-        logger.info(f"\n<¯ {len(markets_data)} piyasa için ki_isel AI analizi ba_l1yor...")
+        logger.info(f"\n{len(markets_data)} piyasa icin kisisel AI analizi basliyor...")
         logger.info(f"  AI Model: {ai_model.upper()}")
         logger.info(f"  Analiz Stili: {analysis_style.upper()}\n")
 
@@ -154,14 +154,14 @@ def run():
             row_index = market_data["row_index"]
 
             logger.info(f"\n{'='*60}")
-            logger.info(f"=Ê {market} @ ${price:,.2f}")
+            logger.info(f"{market} @ ${price:,.2f}")
             logger.info(f"{'='*60}")
 
             # Get personal AI analysis
             analysis = analyst.analyze(market, price, indicators)
 
             if not analysis:
-                logger.warning(f"    Ki_isel AI analizi ba_ar1s1z: {market}")
+                logger.warning(f"  Kisisel AI analizi basarisiz: {market}")
                 continue
 
             # Write to Google Sheets (AD-AE columns)
@@ -176,23 +176,23 @@ def run():
                 ws.update_cell(row_index, cols.AO, status_text(8, True))
 
                 processed += 1
-                logger.info(f"   {analysis['signal']} ({analysis['confidence']}%)")
-                logger.info(f"  =Ý {analysis['reasoning'][:100]}...")
-                logger.info(f"   Sat1r {row_index} güncellendi")
+                logger.info(f"  {analysis['signal']} ({analysis['confidence']}%)")
+                logger.info(f"  {analysis['reasoning'][:100]}...")
+                logger.info(f"  Satir {row_index} guncellendi")
 
                 time.sleep(0.5)  # Rate limiting
 
             except Exception as e:
-                logger.error(f"  L Sheets yazma hatas1 {market}: {e}")
+                logger.error(f"  Sheets yazma hatasi {market}: {e}")
                 continue
 
         logger.info("\n" + "=" * 80)
-        logger.info(f" ROBOT 8 TAMAMLANDI")
-        logger.info(f"  0_lenen piyasa: {processed}/{len(markets_data)}")
+        logger.info(f"ROBOT 8 TAMAMLANDI")
+        logger.info(f"  Islenen piyasa: {processed}/{len(markets_data)}")
         logger.info("=" * 80)
 
     except Exception as e:
-        logger.error(f"L ROBOT 8 BA^ARISIZ: {e}", exc_info=True)
+        logger.error(f"ROBOT 8 BASARISIZ: {e}", exc_info=True)
         raise
 
 
