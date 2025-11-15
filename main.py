@@ -174,17 +174,19 @@ async def main_async():
     1. Robot 1: Market Harvester - Collect data + indicators
     2. Robot 2: News Analyzer - Fetch news + sentiment
     3. Robot 6: Performance Tracker - Update old signals FIRST
-    4. Robot 3: AI Signal Generator - Generate NEW signals (Claude/Gemini)
-    5. Robot 7: AI Command Center - Multi-AI analysis (5 AI + Meta-Analyzer)
-    6. Robot 4: Chart Generator - Create charts for signals
-    7. Robot 5: Telegram Publisher - Publish to channel
+    4. Robot 3: AI Signal Generator - 4 AI analyses (DeepSeek, Claude, GPT-4, Grok)
+    5. Robot 8: Personal AI Analyst - User's custom AI analysis
+    6. Robot 7: AI Command Center - Meta-analysis (reads Robot 3 + Robot 8)
+    7. Robot 4: Chart Generator - Create charts for signals
+    8. Robot 5: Telegram Publisher - Publish to channel
 
     WHY THIS ORDER?
     - Data collection first (Robot 1)
     - News context second (Robot 2)
     - Update OLD signals before generating NEW ones (Robot 6 → Robot 3)
-    - Robot 3: Basic signals (TEST mode compatibility)
-    - Robot 7: Advanced multi-AI analysis (LIVE mode)
+    - Robot 3: 4 AI detailed analyses → columns V-AC
+    - Robot 8: User's personal AI → columns AD-AE
+    - Robot 7: Reads ALL AIs (3+8) and does meta-analysis → columns AF-AI
     - Charts after signals ready (Robot 4)
     - Publishing last (Robot 5)
     """
@@ -202,7 +204,7 @@ async def main_async():
         pass
 
     # Get robot selection from environment
-    robot_select = os.getenv("ROBOT", "1,2,3,4,5,6")
+    robot_select = os.getenv("ROBOT", "1,2,3,4,5,6,7,8")
     logger.info(f"📋 Seçili robotlar: {robot_select}")
 
     results: Dict[str, bool] = {}
@@ -239,15 +241,23 @@ async def main_async():
                 "Robot 3: AI Signal Generator"
             )
 
-        # PHASE 3.5: AI COMMAND CENTER (Multi-AI Analysis)
+        # PHASE 3.5: PERSONAL AI ANALYST (User's Custom AI)
+        if "8" in robot_select and not shutdown_requested:
+            from robots import personal_ai_analyst
+            results["Robot 8: Personal AI Analyst"] = run_sync_robot(
+                personal_ai_analyst,
+                "Robot 8: Personal AI Analyst"
+            )
+
+        # PHASE 4: AI COMMAND CENTER (Meta-Analysis of Robot 3 + Robot 8)
         if "7" in robot_select and not shutdown_requested:
             from robots import ai_command_center
-            results["Robot 7: AI Command Center"] = await run_async_robot(
+            results["Robot 7: AI Command Center"] = run_sync_robot(
                 ai_command_center,
                 "Robot 7: AI Command Center"
             )
 
-        # PHASE 4: VISUALIZATION
+        # PHASE 5: VISUALIZATION
         if "4" in robot_select and not shutdown_requested:
             from robots import chart_generator
             results["Robot 4: Chart Generator"] = run_sync_robot(
@@ -255,7 +265,7 @@ async def main_async():
                 "Robot 4: Chart Generator"
             )
 
-        # PHASE 5: PUBLISHING
+        # PHASE 6: PUBLISHING
         if "5" in robot_select and not shutdown_requested:
             from robots import telegram_publisher
             results["Robot 5: Telegram Publisher"] = run_sync_robot(
