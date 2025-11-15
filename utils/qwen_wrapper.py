@@ -1,36 +1,50 @@
+# utils/qwen_wrapper.py
 # -*- coding: utf-8 -*-
 """
-OpenAI GPT-4 API Wrapper
-Provides trading signal analysis using GPT-4
+Qwen AI Wrapper (Alibaba Cloud)
+Model: Qwen2.5-Max (72B) - En güçlü Alibaba modeli
 """
 
 import time
 import logging
-from typing import Optional, Dict
+from typing import Dict, Optional
 from openai import OpenAI
 
 from utils.secrets import get_secret
 
-logger = logging.getLogger("OpenAI-Wrapper")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("QwenWrapper")
 
 
-class OpenAIClient:
-    """Wrapper for OpenAI GPT-4 API"""
+class QwenClient:
+    """
+    Qwen AI client for trading signal analysis
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "o3"):
+    Qwen2.5-Max özellikleri:
+    - 72B parametre
+    - Çin ekonomisi ve global makro analizi
+    - Güçlü matematik ve akıl yürütme
+    """
+
+    def __init__(self, api_key: Optional[str] = None):
         """
-        Initialize OpenAI client
+        Initialize Qwen client
 
         Args:
-            api_key: OpenAI API key (if None, fetches from secrets)
-            model: Model to use (default: o3 - en güçlü OpenAI modeli)
-                   Alternatifler: o3-mini (ucuz), gpt-4-turbo (eski)
+            api_key: Qwen API key (if None, fetches from secrets)
         """
-        self.api_key = api_key or get_secret("OPENAI_API_KEY", required=False)
-        self.model = model
-        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
-        if self.client:
-            logger.info(f"OpenAI client initialized with model: {model}")
+        if api_key is None:
+            api_key = get_secret("QWEN_API_KEY", required=False)
+
+        if not api_key:
+            raise ValueError("QWEN_API_KEY not found")
+
+        # Qwen uses OpenAI-compatible API
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        self.model = "qwen-max"  # qwen-max = Qwen2.5-Max (72B)
 
     def analyze_market(
         self,
@@ -38,20 +52,20 @@ class OpenAIClient:
         price: float,
         indicators: Dict,
         news_sentiment: Optional[str] = None,
-        max_retries: int = 3
+        max_retries: int = 2
     ) -> Optional[Dict]:
         """
-        Get trading signal from GPT-4
+        Analyze market and return trading signal
 
         Args:
-            market: Market symbol (e.g., "BTC/USDT")
+            market: Market symbol
             price: Current price
-            indicators: Technical indicators dict
+            indicators: Technical indicators
             news_sentiment: Optional news sentiment
             max_retries: Number of retry attempts
 
         Returns:
-            Dict with signal, confidence, reasoning
+            Signal dict with signal/confidence/reasoning
         """
         prompt = self._build_prompt(market, price, indicators, news_sentiment)
 
@@ -60,32 +74,25 @@ class OpenAIClient:
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert financial analyst. Analyze market data and provide trading signals (BUY/SELL/HOLD) with confidence level (0-100) and brief reasoning."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
+                        {"role": "system", "content": "Sen profesyonel bir finansal analistin. Teknik ve fundamental analizi birleştirerek işlem sinyalleri üretiyorsun."},
+                        {"role": "user", "content": prompt}
                     ],
-                    temperature=0.3,  # Lower temperature for more consistent analysis
+                    temperature=0.3,  # Düşük temperature = tutarlı sonuçlar
                     max_tokens=500
                 )
 
-                # Parse response
                 content = response.choices[0].message.content
                 result = self._parse_response(content, market)
 
-                logger.info(f"GPT-4 analyzed {market}: {result['signal']} ({result['confidence']}%)")
+                logger.info(f"Qwen analyzed {market}: {result['signal']} ({result['confidence']}%)")
                 return result
 
             except Exception as e:
-                logger.warning(f"GPT-4 attempt {attempt + 1}/{max_retries} failed: {e}")
+                logger.warning(f"Qwen deneme {attempt + 1}/{max_retries} başarısız: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2 ** attempt)  # Üstel geri çekilme
                 else:
-                    logger.error(f"GPT-4 failed for {market} after {max_retries} attempts")
+                    logger.error(f"Qwen {max_retries} denemeden sonra {market} için başarısız oldu")
                     return None
 
     def _build_prompt(
@@ -104,9 +111,14 @@ Teknik Göstergeler:
 - RSI: {indicators.get('rsi', 'Yok')}
 - MACD: {indicators.get('macd', 'Yok')}
 - MACD Sinyali: {indicators.get('macd_signal', 'Yok')}
-- Bollinger Bantları: Üst={indicators.get('bb_upper', 'Yok')}, Alt={indicators.get('bb_lower', 'Yok')}
+- MACD Histogram: {indicators.get('macd_histogram', 'Yok')}
+- Bollinger Bantları: Üst={indicators.get('bb_upper', 'Yok')}, Orta={indicators.get('bb_middle', 'Yok')}, Alt={indicators.get('bb_lower', 'Yok')}
 - EMA 9: {indicators.get('ema_9', 'Yok')}
 - EMA 21: {indicators.get('ema_21', 'Yok')}
+- EMA 50: {indicators.get('ema_50', 'Yok')}
+- EMA 200: {indicators.get('ema_200', 'Yok')}
+- Destek: {indicators.get('support_levels', ['Yok'])[0] if indicators.get('support_levels') else 'Yok'}
+- Direnç: {indicators.get('resistance_levels', ['Yok'])[0] if indicators.get('resistance_levels') else 'Yok'}
 - Eğilim: {indicators.get('trend', 'Yok')}
 """
 
@@ -114,15 +126,17 @@ Teknik Göstergeler:
             prompt += f"\nHaber Duyarlılığı: {news_sentiment}\n"
 
         prompt += """
+Özellikle global makro ekonomik faktörleri ve Çin piyasalarının etkisini değerlendir.
+
 Analizini tam olarak şu formatta ver:
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [1-2 cümlelik kısa açıklama - TÜRKÇE yaz]
+REASONING: [2-3 cümlelik detaylı analiz - TÜRKÇE yaz, özellikle makro faktörleri vurgula]
 """
         return prompt
 
     def _parse_response(self, content: str, market: str) -> Dict:
-        """GPT-4 yanıtını yapılandırılmış formata dönüştür"""
+        """Qwen yanıtını yapılandırılmış formata dönüştür"""
         lines = content.strip().split('\n')
 
         signal = "HOLD"
@@ -146,13 +160,13 @@ REASONING: [1-2 cümlelik kısa açıklama - TÜRKÇE yaz]
             "signal": signal,
             "confidence": confidence,
             "reasoning": reasoning,
-            "ai_model": "GPT-4"
+            "ai_model": "Qwen2.5-Max"
         }
 
 
-def get_openai_signal(market: str, price: float, indicators: Dict, news_sentiment: Optional[str] = None) -> Optional[Dict]:
+def get_qwen_signal(market: str, price: float, indicators: Dict, news_sentiment: Optional[str] = None) -> Optional[Dict]:
     """
-    Convenience function to get OpenAI trading signal
+    Convenience function to get Qwen trading signal
 
     Args:
         market: Market symbol
@@ -164,8 +178,8 @@ def get_openai_signal(market: str, price: float, indicators: Dict, news_sentimen
         Signal dict or None
     """
     try:
-        client = OpenAIClient()
+        client = QwenClient()
         return client.analyze_market(market, price, indicators, news_sentiment)
     except Exception as e:
-        logger.error(f"OpenAI wrapper failed: {e}")
+        logger.error(f"Qwen wrapper failed: {e}")
         return None

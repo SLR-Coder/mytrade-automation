@@ -174,14 +174,17 @@ async def main_async():
     1. Robot 1: Market Harvester - Collect data + indicators
     2. Robot 2: News Analyzer - Fetch news + sentiment
     3. Robot 6: Performance Tracker - Update old signals FIRST
-    4. Robot 3: AI Signal Generator - Generate NEW signals
-    5. Robot 4: Chart Generator - Create charts for signals
-    6. Robot 5: Telegram Publisher - Publish to channel
+    4. Robot 3: AI Signal Generator - Generate NEW signals (Claude/Gemini)
+    5. Robot 7: AI Command Center - Multi-AI analysis (5 AI + Meta-Analyzer)
+    6. Robot 4: Chart Generator - Create charts for signals
+    7. Robot 5: Telegram Publisher - Publish to channel
 
     WHY THIS ORDER?
     - Data collection first (Robot 1)
     - News context second (Robot 2)
     - Update OLD signals before generating NEW ones (Robot 6 → Robot 3)
+    - Robot 3: Basic signals (TEST mode compatibility)
+    - Robot 7: Advanced multi-AI analysis (LIVE mode)
     - Charts after signals ready (Robot 4)
     - Publishing last (Robot 5)
     """
@@ -234,6 +237,14 @@ async def main_async():
             results["Robot 3: AI Signal Generator"] = await run_async_robot(
                 ai_signal_generator,
                 "Robot 3: AI Signal Generator"
+            )
+
+        # PHASE 3.5: AI COMMAND CENTER (Multi-AI Analysis)
+        if "7" in robot_select and not shutdown_requested:
+            from robots import ai_command_center
+            results["Robot 7: AI Command Center"] = await run_async_robot(
+                ai_command_center,
+                "Robot 7: AI Command Center"
             )
 
         # PHASE 4: VISUALIZATION

@@ -46,9 +46,16 @@ class ColumnMapping:
     AG = 33 # Pozisyon Büyüklüğü
     AH = 34 # Durum
     AI = 35 # Notlar
-    AJ = 36 # Yedek
-    AK = 37 # Yedek
-    AL = 38 # Yedek
+    AJ = 36 # Qwen Sinyali
+    AK = 37 # DeepSeek Sinyali
+    AL = 38 # Grok Sinyali
+    AM = 39 # Asistan AI Önerisi
+    AN = 40 # Komuta Merkezi Kararı
+    AO = 41 # Komuta Merkezi Gerekçesi
+    AP = 42 # Consensus Skoru
+    AQ = 43 # Yedek
+    AR = 44 # Yedek
+    AS = 45 # Yedek
 
 def create_header_row() -> List[str]:
     """
@@ -93,9 +100,16 @@ def create_header_row() -> List[str]:
         "Pozisyon Büyüklüğü %", # AG
         "Durum",             # AH
         "Notlar",            # AI
-        "Yedek",             # AJ
-        "Yedek",             # AK
-        "Yedek"              # AL
+        "Qwen Sinyali",      # AJ
+        "DeepSeek Sinyali",  # AK
+        "Grok Sinyali",      # AL
+        "Asistan AI",        # AM
+        "Komuta Merkezi",    # AN
+        "KM Gerekçesi",      # AO
+        "Consensus %",       # AP
+        "Yedek",             # AQ
+        "Yedek",             # AR
+        "Yedek"              # AS
     ]
     return headers
 
