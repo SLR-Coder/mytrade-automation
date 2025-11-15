@@ -90,45 +90,45 @@ class ClaudeClient:
         indicators: Dict,
         news_sentiment: Optional[str]
     ) -> str:
-        """Build analysis prompt"""
-        prompt = f"""Analyze {market} and provide a comprehensive trading signal.
+        """Analiz prompt'u oluştur"""
+        prompt = f"""{market} piyasasını analiz et ve kapsamlı bir işlem sinyali ver.
 
-Current Price: ${price:,.2f}
+Mevcut Fiyat: ${price:,.2f}
 
-Technical Indicators:
-- RSI: {indicators.get('rsi', 'N/A')}
-- MACD: {indicators.get('macd', 'N/A')}
-- MACD Signal: {indicators.get('macd_signal', 'N/A')}
-- MACD Histogram: {indicators.get('macd_histogram', 'N/A')}
-- Bollinger Bands: Upper={indicators.get('bb_upper', 'N/A')}, Middle={indicators.get('bb_middle', 'N/A')}, Lower={indicators.get('bb_lower', 'N/A')}
-- EMA 9: {indicators.get('ema_9', 'N/A')}
-- EMA 21: {indicators.get('ema_21', 'N/A')}
-- EMA 50: {indicators.get('ema_50', 'N/A')}
-- EMA 200: {indicators.get('ema_200', 'N/A')}
-- Support Level: {indicators.get('support_levels', ['N/A'])[0] if indicators.get('support_levels') else 'N/A'}
-- Resistance Level: {indicators.get('resistance_levels', ['N/A'])[0] if indicators.get('resistance_levels') else 'N/A'}
-- Trend: {indicators.get('trend', 'N/A')}
+Teknik Göstergeler:
+- RSI: {indicators.get('rsi', 'Yok')}
+- MACD: {indicators.get('macd', 'Yok')}
+- MACD Sinyali: {indicators.get('macd_signal', 'Yok')}
+- MACD Histogram: {indicators.get('macd_histogram', 'Yok')}
+- Bollinger Bantları: Üst={indicators.get('bb_upper', 'Yok')}, Orta={indicators.get('bb_middle', 'Yok')}, Alt={indicators.get('bb_lower', 'Yok')}
+- EMA 9: {indicators.get('ema_9', 'Yok')}
+- EMA 21: {indicators.get('ema_21', 'Yok')}
+- EMA 50: {indicators.get('ema_50', 'Yok')}
+- EMA 200: {indicators.get('ema_200', 'Yok')}
+- Destek Seviyesi: {indicators.get('support_levels', ['Yok'])[0] if indicators.get('support_levels') else 'Yok'}
+- Direnç Seviyesi: {indicators.get('resistance_levels', ['Yok'])[0] if indicators.get('resistance_levels') else 'Yok'}
+- Eğilim: {indicators.get('trend', 'Yok')}
 """
 
         if news_sentiment:
-            prompt += f"\nNews Sentiment: {news_sentiment}\n"
+            prompt += f"\nHaber Duyarlılığı: {news_sentiment}\n"
 
         prompt += """
-Based on this data, provide your trading recommendation in this exact format:
+Bu verilere dayanarak, işlem önerini tam olarak şu formatta ver:
 
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [Your detailed analysis in 2-3 sentences, considering technical indicators, trend, and risk factors]
+REASONING: [Teknik göstergeleri, eğilimi ve risk faktörlerini göz önünde bulundurarak 2-3 cümlede detaylı analizin - TÜRKÇE yaz]
 """
         return prompt
 
     def _parse_response(self, content: str, market: str) -> Dict:
-        """Parse Claude response into structured format"""
+        """Claude yanıtını yapılandırılmış formata dönüştür"""
         lines = content.strip().split('\n')
 
         signal = "HOLD"
         confidence = 50
-        reasoning = "Unable to parse response"
+        reasoning = "Yanıt ayrıştırılamadı"
 
         for line in lines:
             line = line.strip()

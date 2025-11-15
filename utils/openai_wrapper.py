@@ -93,39 +93,39 @@ class OpenAIClient:
         indicators: Dict,
         news_sentiment: Optional[str]
     ) -> str:
-        """Build analysis prompt"""
-        prompt = f"""Analyze {market} and provide a trading signal.
+        """Analiz prompt'u oluştur"""
+        prompt = f"""{market} piyasasını analiz et ve işlem sinyali ver.
 
-Current Price: ${price:,.2f}
+Mevcut Fiyat: ${price:,.2f}
 
-Technical Indicators:
-- RSI: {indicators.get('rsi', 'N/A')}
-- MACD: {indicators.get('macd', 'N/A')}
-- MACD Signal: {indicators.get('macd_signal', 'N/A')}
-- Bollinger Bands: Upper={indicators.get('bb_upper', 'N/A')}, Lower={indicators.get('bb_lower', 'N/A')}
-- EMA 9: {indicators.get('ema_9', 'N/A')}
-- EMA 21: {indicators.get('ema_21', 'N/A')}
-- Trend: {indicators.get('trend', 'N/A')}
+Teknik Göstergeler:
+- RSI: {indicators.get('rsi', 'Yok')}
+- MACD: {indicators.get('macd', 'Yok')}
+- MACD Sinyali: {indicators.get('macd_signal', 'Yok')}
+- Bollinger Bantları: Üst={indicators.get('bb_upper', 'Yok')}, Alt={indicators.get('bb_lower', 'Yok')}
+- EMA 9: {indicators.get('ema_9', 'Yok')}
+- EMA 21: {indicators.get('ema_21', 'Yok')}
+- Eğilim: {indicators.get('trend', 'Yok')}
 """
 
         if news_sentiment:
-            prompt += f"\nNews Sentiment: {news_sentiment}\n"
+            prompt += f"\nHaber Duyarlılığı: {news_sentiment}\n"
 
         prompt += """
-Provide your analysis in this exact format:
+Analizini tam olarak şu formatta ver:
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [Brief explanation in 1-2 sentences]
+REASONING: [1-2 cümlelik kısa açıklama - TÜRKÇE yaz]
 """
         return prompt
 
     def _parse_response(self, content: str, market: str) -> Dict:
-        """Parse GPT-4 response into structured format"""
+        """GPT-4 yanıtını yapılandırılmış formata dönüştür"""
         lines = content.strip().split('\n')
 
         signal = "HOLD"
         confidence = 50
-        reasoning = "Unable to parse response"
+        reasoning = "Yanıt ayrıştırılamadı"
 
         for line in lines:
             line = line.strip()
