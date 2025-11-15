@@ -190,7 +190,7 @@ def write_to_sheet(ws, cols, data_list: List[Dict]):
     timestamp = datetime.datetime.now(turkey_tz).strftime("%Y-%m-%d %H:%M:%S")
 
     rows_to_add = []
-    row_len = cols.AL  # Last column (AL)
+    row_len = cols.AS  # Last column (AS - yeni AI kolonları dahil)
 
     for data in data_list:
         if not data:
