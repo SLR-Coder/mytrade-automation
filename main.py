@@ -203,9 +203,15 @@ async def main_async():
     except:
         pass
 
-    # Get robot selection from environment
-    robot_select = os.getenv("ROBOT", "1,2,3,4,5,6,7,8")
-    logger.info(f"📋 Seçili robotlar: {robot_select}")
+    # Get robot selection from command-line args or environment
+    if len(sys.argv) > 1:
+        # Command-line argument takes precedence
+        robot_select = sys.argv[1]
+        logger.info(f"📋 Komut satırından seçili robotlar: {robot_select}")
+    else:
+        # Fallback to environment variable
+        robot_select = os.getenv("ROBOT", "1,2,3,4,5,6,7,8")
+        logger.info(f"📋 Environment'tan seçili robotlar: {robot_select}")
 
     results: Dict[str, bool] = {}
 
