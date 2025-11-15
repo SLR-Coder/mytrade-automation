@@ -194,54 +194,72 @@ class PersonalAIAnalyst:
     """
     Robot 8: Kullanıcının kişisel AI analisti
 
-    Kullanıcının verdiği özel prompt ve tercihlerine göre piyasa analizi yapar.
-    Robot 3'teki AI'lar gibi çalışır ama tamamen kişiselleştirilmiştir.
+    FIXED: Sadece Gemini 2.5 Pro kullanır
+    Kullanıcının özel Jirad-style intraday trading prompt'una göre analiz yapar
     """
 
     def __init__(
         self,
-        ai_model: str = "claude",
-        custom_prompt: Optional[str] = None,
-        analysis_style: str = "balanced"
+        ai_model: str = "gemini",  # FIXED: Always Gemini
+        custom_prompt: Optional[str] = None
     ):
         """
         Initialize Personal AI Analyst
 
         Args:
-            ai_model: Kullanılacak AI ("claude", "gpt4", "gemini")
-            custom_prompt: Kullanıcının özel talimatları
-            analysis_style: Analiz stili ("aggressive", "conservative", "balanced")
+            ai_model: FIXED to "gemini" (Gemini 2.5 Pro)
+            custom_prompt: Kullanıcının özel prompt'u (Jirad-style trading strategy)
         """
-        self.ai_model = ai_model.lower()
-        self.custom_prompt = custom_prompt or self._get_default_prompt(analysis_style)
-        self.analysis_style = analysis_style
+        self.ai_model = "gemini"  # FIXED: Always Gemini, ignore parameter
+        self.custom_prompt = custom_prompt or self._get_default_jirad_prompt()
 
-        logger.info(f"Personal AI Analyst başlatıldı: model={ai_model}, style={analysis_style}")
+        logger.info(f"Personal AI Analyst (Robot 8) başlatıldı: GEMINI 2.5 PRO")
 
-    def _get_default_prompt(self, style: str) -> str:
-        """Analiz stiline göre varsayılan prompt"""
+    def _get_default_jirad_prompt(self) -> str:
+        """Jirad-style liquidity + SMC intraday trading strategy"""
 
-        if style == "aggressive":
-            return """Sen agresif bir yatırımcı için çalışan kişisel AI analistsin.
-Kullanıcı yüksek risk-yüksek getiri arıyor. Volatilite fırsattır.
-Kısa vadeli momentum, güçlü breakout'lar ve hızlı hareketleri tercih et.
-Belirsizlik durumunda bile cesur al-sat önerileri yap."""
+        return """You are an intraday strategy engine implementing a *Jirad-style liquidity + SMC setup*.
 
-        elif style == "conservative":
-            return """Sen muhafazakar bir yatırımcı için çalışan kişisel AI analistsin.
-Kullanıcı sermaye koruma odaklı, düşük risk tercih ediyor.
-Uzun vadeli güçlü trendler, sağlam destek seviyeleri ve düşük volatiliteyi tercih et.
-Belirsizlik durumunda HOLD öner, sadece net fırsatlarda BUY/SELL ver."""
+You ONLY trade these symbols: EURUSD, GBPUSD, XAUUSD, USDJPY, BTCUSD
 
-        else:  # balanced
-            return """Sen dengeli bir yatırımcı için çalışan kişisel AI analistsin.
-Kullanıcı risk-getiri dengesini önemsiyor.
-Orta vadeli net trendler, güçlü teknik sinyaller ve makul risk-ödül oranlarını tercih et.
-Belirsizlik varsa HOLD, net sinyal varsa BUY/SELL öner."""
+CORE IDEA:
+- Trade ONLY in the first 1-2 hours of major sessions (Asia/London/New York)
+- Main timeframe: M15, Refinement: M5, Higher TF bias: H1 and D1
+
+SETUP:
+1. Identify previous session high/low as liquidity pools
+2. Wait for liquidity sweep of that high/low
+3. Confirm failed breakout (FBO) and CHoCH/BOS in opposite direction
+4. Trade in direction of H1/D1 trend, targeting 1:4 R:R
+5. Risk: 0.5% per trade, Max: 4 trades/day/symbol
+
+MUST-HAVE CONDITIONS:
+1. Inside first 1-2h of active session
+2. Clear prior liquidity (previous session high/low)
+3. Liquidity sweep (meaningful spike beyond level)
+4. First FBO after sweep (closes back through level)
+5. Structure shift (CHoCH/BOS with displacement)
+6. H1/D1 trend alignment
+7. Risk 0.5%, TP at 1:4 R:R
+8. Max 4 trades/day/symbol
+
+AVOID: Major news, choppy/range days, ultra-low volatility, daily limit reached
+
+OUTPUT FORMAT - IF VALID SETUP:
+SIGNAL: BUY/SELL
+CONFIDENCE: 0-100
+REASONING: [Turkish] Hangi session, hangi liquidity sweep, FBO kaniti, CHoCH/BOS, H1/D1 trend alignment, R:R detaylari
+
+OUTPUT FORMAT - IF NO SETUP:
+SIGNAL: HOLD
+CONFIDENCE: 0
+REASONING: [Turkish] Neden trade yok: session disinda, sweep yok, FBO yok, trend uyumsuz, choppy, news, limit, vs.
+
+IMPORTANT: Prefer NO_TRADE (HOLD) when conditions not clearly met. Always respond in TURKISH."""
 
     def analyze(self, market: str, price: float, indicators: Dict) -> Optional[Dict]:
         """
-        Piyasayı analiz et ve sinyal üret
+        Piyasayı analiz et ve sinyal üret (SADECE GEMINI 2.5 PRO)
 
         Args:
             market: Piyasa adı
@@ -255,24 +273,16 @@ Belirsizlik varsa HOLD, net sinyal varsa BUY/SELL öner."""
             # Build full analysis prompt
             full_prompt = self._build_analysis_prompt(market, price, indicators)
 
-            # Call AI model
-            if self.ai_model == "claude":
-                result = self._call_claude(full_prompt)
-            elif self.ai_model in ["gpt4", "openai"]:
-                result = self._call_openai(full_prompt)
-            elif self.ai_model == "gemini":
-                result = self._call_gemini(full_prompt)
-            else:
-                logger.error(f"Bilinmeyen AI model: {self.ai_model}")
-                return None
+            # FIXED: Always call Gemini
+            result = self._call_gemini(full_prompt)
 
             if result:
-                logger.info(f"Personal AI ({self.ai_model}): {result['signal']} ({result['confidence']}%)")
+                logger.info(f"Personal AI (Gemini 2.5 Pro): {result['signal']} ({result['confidence']}%)")
 
             return result
 
         except Exception as e:
-            logger.error(f"Personal AI Analyst hatası: {e}")
+            logger.error(f"Personal AI Analyst (Gemini) hatası: {e}")
             return None
 
     def _build_analysis_prompt(self, market: str, price: float, indicators: Dict) -> str:
@@ -330,62 +340,8 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
 
         return prompt
 
-    def _call_claude(self, prompt: str) -> Optional[Dict]:
-        """Claude ile analiz yap"""
-        try:
-            from anthropic import Anthropic
-            from utils.secrets import get_secret
-
-            api_key = get_secret("CLAUDE_API_KEY", required=False)
-            if not api_key:
-                logger.warning("Claude API key bulunamadı")
-                return None
-
-            client = Anthropic(api_key=api_key)
-
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1500,
-                temperature=0.3,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            text = response.content[0].text
-            return self._parse_response(text)
-
-        except Exception as e:
-            logger.error(f"Claude hatası: {e}")
-            return None
-
-    def _call_openai(self, prompt: str) -> Optional[Dict]:
-        """OpenAI ile analiz yap"""
-        try:
-            from openai import OpenAI
-            from utils.secrets import get_secret
-
-            api_key = get_secret("OPENAI_API_KEY", required=False)
-            if not api_key:
-                logger.warning("OpenAI API key bulunamadı")
-                return None
-
-            client = OpenAI(api_key=api_key)
-
-            response = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=1500
-            )
-
-            text = response.choices[0].message.content
-            return self._parse_response(text)
-
-        except Exception as e:
-            logger.error(f"OpenAI hatası: {e}")
-            return None
-
     def _call_gemini(self, prompt: str) -> Optional[Dict]:
-        """Gemini ile analiz yap"""
+        """Gemini 2.0 Flash Thinking ile analiz yap"""
         try:
             import google.generativeai as genai
             from utils.secrets import get_secret
@@ -396,7 +352,8 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
                 return None
 
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash-exp")
+            # Use Gemini 2.0 Flash Thinking for better intraday analysis
+            model = genai.GenerativeModel("gemini-2.0-flash-thinking-exp-01-21")
 
             response = model.generate_content(prompt)
             text = response.text
@@ -457,19 +414,19 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
 
 
 def create_personal_analyst(
-    ai_model: str = "claude",
-    custom_prompt: Optional[str] = None,
-    analysis_style: str = "balanced"
+    ai_model: str = "gemini",  # FIXED: Always Gemini (ignored)
+    custom_prompt: Optional[str] = None
 ) -> PersonalAIAnalyst:
     """
     Kişisel AI analist oluştur (Robot 8)
 
+    FIXED: Sadece Gemini 2.0 Flash Thinking kullanır
+
     Args:
-        ai_model: AI modeli ("claude", "gpt4", "gemini")
-        custom_prompt: Kullanıcının özel prompt'u
-        analysis_style: Analiz stili ("aggressive", "conservative", "balanced")
+        ai_model: IGNORED - Always uses Gemini
+        custom_prompt: Kullanıcının özel Jirad-style trading prompt'u
 
     Returns:
-        PersonalAIAnalyst instance
+        PersonalAIAnalyst instance (Gemini 2.0 Flash Thinking)
     """
-    return PersonalAIAnalyst(ai_model, custom_prompt, analysis_style)
+    return PersonalAIAnalyst(ai_model="gemini", custom_prompt=custom_prompt)

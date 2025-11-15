@@ -113,7 +113,7 @@ def get_latest_market_data(ws, cols) -> List[Dict]:
 def run():
     """Main execution function for Robot 8"""
     logger.info("=" * 80)
-    logger.info("ROBOT 8: PERSONAL AI ANALYST (KISISEL AI ANALIZI) - BASLAT")
+    logger.info("ROBOT 8: PERSONAL AI ANALYST (GEMINI 2.5 PRO) - BASLAT")
     logger.info("=" * 80)
 
     try:
@@ -127,24 +127,23 @@ def run():
             logger.warning("Analiz edilecek piyasa yok")
             return
 
-        # Create personal AI analyst
-        # Environment variables for customization:
-        # - PERSONAL_AI_MODEL: "claude", "gpt4", "gemini" (default: claude)
-        # - PERSONAL_AI_STYLE: "aggressive", "conservative", "balanced" (default: balanced)
-        # - PERSONAL_AI_CUSTOM_PROMPT: Custom user instructions
-        ai_model = os.getenv("PERSONAL_AI_MODEL", "claude")
-        analysis_style = os.getenv("PERSONAL_AI_STYLE", "balanced")
+        # Robot 8: ALWAYS uses Gemini 2.5 Pro with user's custom prompt
+        # Fixed: ai_model = "gemini"
+        # Custom prompt from environment variable
+        ai_model = "gemini"  # FIXED: Always Gemini
         custom_prompt = os.getenv("PERSONAL_AI_CUSTOM_PROMPT", None)
 
         analyst = create_personal_analyst(
             ai_model=ai_model,
-            custom_prompt=custom_prompt,
-            analysis_style=analysis_style
+            custom_prompt=custom_prompt
         )
 
         logger.info(f"\n{len(markets_data)} piyasa icin kisisel AI analizi basliyor...")
-        logger.info(f"  AI Model: {ai_model.upper()}")
-        logger.info(f"  Analiz Stili: {analysis_style.upper()}\n")
+        logger.info(f"  AI Model: GEMINI 2.5 PRO (Fixed)")
+        if custom_prompt:
+            logger.info(f"  Custom Prompt: {custom_prompt[:100]}...")
+        else:
+            logger.info(f"  Using default Jirad-style prompt")
 
         processed = 0
         for market_data in markets_data:
