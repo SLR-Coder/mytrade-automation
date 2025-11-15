@@ -31,9 +31,9 @@ def main():
     # Create Turkish headers
     turkish_headers = create_header_row()
 
-    # Update first row (A1:AS1 - yeni AI kolonları dahil)
+    # Update first row (A1:AP1 - yeni yapı)
     print(f"✓ {len(turkish_headers)} sütun başlığı güncelleniyor...")
-    ws.update('A1:AS1', [turkish_headers], value_input_option='RAW')
+    ws.update('A1:AP1', [turkish_headers], value_input_option='RAW')
 
     print("✅ TAMAMLANDI! Google Sheets başlıkları Türkçe'ye çevrildi.")
     print("\nGüncellenen başlıklar:")

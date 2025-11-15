@@ -11,11 +11,14 @@ logger = logging.getLogger("Schema")
 
 class ColumnMapping:
     """Google Sheets için sütun eşlemesi"""
+    # BÖLÜM 1: PİYASA VERİLERİ (Robot 1)
     A = 1   # Zaman Damgası
     B = 2   # Piyasa
     C = 3   # Fiyat
     D = 4   # Değişim %
     E = 5   # Hacim
+
+    # BÖLÜM 2: TEKNİK GÖSTERGELER (Robot 1)
     F = 6   # RSI
     G = 7   # MACD
     H = 8   # MACD Sinyal
@@ -30,32 +33,41 @@ class ColumnMapping:
     Q = 17  # Destek
     R = 18  # Direnç
     S = 19  # Eğilim
+
+    # BÖLÜM 3: HABER ANALİZİ (Robot 2)
     T = 20  # Haber Özeti
     U = 21  # Haber Duyarlılığı
-    V = 22  # GPT-4 Sinyali
-    W = 23  # Claude Sinyali
-    X = 24  # Gemini Sinyali
-    Y = 25  # Nihai Sinyal
-    Z = 26  # Güven
-    AA = 27 # AI Gerekçesi
-    AB = 28 # Giriş Fiyatı
-    AC = 29 # Zarar Durdur
-    AD = 30 # Kar Al 1
-    AE = 31 # Kar Al 2
-    AF = 32 # Risk/Ödül
-    AG = 33 # Pozisyon Büyüklüğü
-    AH = 34 # Durum
-    AI = 35 # Notlar
-    AJ = 36 # Qwen Sinyali
-    AK = 37 # DeepSeek Sinyali
-    AL = 38 # Grok Sinyali
-    AM = 39 # Asistan AI Önerisi
-    AN = 40 # Komuta Merkezi Kararı
-    AO = 41 # Komuta Merkezi Gerekçesi
-    AP = 42 # Consensus Skoru
-    AQ = 43 # Yedek
-    AR = 44 # Yedek
-    AS = 45 # Yedek
+
+    # BÖLÜM 4: AI ANALİZLERİ (Robot 3 - 4 AI x 2 kolon)
+    V = 22  # DeepSeek Sinyal
+    W = 23  # DeepSeek Analiz
+    X = 24  # Claude Sinyal
+    Y = 25  # Claude Analiz
+    Z = 26  # GPT-4 Sinyal
+    AA = 27 # GPT-4 Analiz
+    AB = 28 # Grok Sinyal
+    AC = 29 # Grok Analiz
+
+    # BÖLÜM 5: AI ASİSTAN (Robot 8)
+    AD = 30 # Asistan Sinyal
+    AE = 31 # Asistan Analiz
+
+    # BÖLÜM 6: KOMUTA MERKEZİ (Robot 7)
+    AF = 32 # KM Nihai Sinyal
+    AG = 33 # KM Güven %
+    AH = 34 # KM Meta-Analiz
+    AI = 35 # Consensus %
+
+    # BÖLÜM 7: RİSK YÖNETİMİ
+    AJ = 36 # Giriş Fiyatı
+    AK = 37 # Stop Loss
+    AL = 38 # Take Profit 1
+    AM = 39 # Take Profit 2
+    AN = 40 # Risk/Ödül
+
+    # BÖLÜM 8: DURUM
+    AO = 41 # Robot Durumu
+    AP = 42 # Notlar
 
 def create_header_row() -> List[str]:
     """
@@ -65,6 +77,7 @@ def create_header_row() -> List[str]:
         List of column headers
     """
     headers = [
+        # BÖLÜM 1-2: Piyasa + Göstergeler (Robot 1)
         "Zaman Damgası",     # A
         "Piyasa",            # B
         "Fiyat",             # C
@@ -84,32 +97,41 @@ def create_header_row() -> List[str]:
         "Destek",            # Q
         "Direnç",            # R
         "Eğilim",            # S
+
+        # BÖLÜM 3: Haber Analizi (Robot 2)
         "Haber Özeti",       # T
         "Haber Duyarlılığı", # U
-        "GPT-4 Sinyali",     # V
-        "Claude Sinyali",    # W
-        "Gemini Sinyali",    # X
-        "Nihai Sinyal",      # Y
-        "Güven %",           # Z
-        "AI Gerekçesi",      # AA
-        "Giriş Fiyatı",      # AB
-        "Zarar Durdur",      # AC
-        "Kar Al 1",          # AD
-        "Kar Al 2",          # AE
-        "Risk/Ödül",         # AF
-        "Pozisyon Büyüklüğü %", # AG
-        "Durum",             # AH
-        "Notlar",            # AI
-        "Qwen Sinyali",      # AJ
-        "DeepSeek Sinyali",  # AK
-        "Grok Sinyali",      # AL
-        "Asistan AI",        # AM
-        "Komuta Merkezi",    # AN
-        "KM Gerekçesi",      # AO
-        "Consensus %",       # AP
-        "Yedek",             # AQ
-        "Yedek",             # AR
-        "Yedek"              # AS
+
+        # BÖLÜM 4: AI Analizleri (Robot 3 - 4 AI)
+        "DeepSeek Sinyal",   # V
+        "DeepSeek Analiz",   # W
+        "Claude Sinyal",     # X
+        "Claude Analiz",     # Y
+        "GPT-4 Sinyal",      # Z
+        "GPT-4 Analiz",      # AA
+        "Grok Sinyal",       # AB
+        "Grok Analiz",       # AC
+
+        # BÖLÜM 5: AI Asistan (Robot 8)
+        "Asistan Sinyal",    # AD
+        "Asistan Analiz",    # AE
+
+        # BÖLÜM 6: Komuta Merkezi (Robot 7)
+        "KM Nihai Sinyal",   # AF
+        "KM Güven %",        # AG
+        "KM Meta-Analiz",    # AH
+        "Consensus %",       # AI
+
+        # BÖLÜM 7: Risk Yönetimi
+        "Giriş Fiyatı",      # AJ
+        "Stop Loss",         # AK
+        "Take Profit 1",     # AL
+        "Take Profit 2",     # AM
+        "Risk/Ödül",         # AN
+
+        # BÖLÜM 8: Durum
+        "Robot Durumu",      # AO
+        "Notlar",            # AP
     ]
     return headers
 
