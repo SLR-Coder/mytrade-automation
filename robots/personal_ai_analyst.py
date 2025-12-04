@@ -74,18 +74,18 @@ def run():
             indicators = market_data["indicators"]
             row_index = market_data["row_index"]
 
-            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
             try:
-                robot1_status = ws.cell(row_index, cols.AU).value or ""
+                robot1_status = ws.cell(row_index, cols.BK).value or ""
                 if not is_ready_for_analysis(robot1_status):
                     skipped_not_ready += 1
                     continue  # Sessizce atla - henüz hazır değil
             except:
                 pass  # Status okunamazsa devam et
 
-            # 2. Robot 8 status kontrolü - Zaten işlenmişse atla (BB sütunu)
+            # 2. Robot 8 status kontrolü - Zaten işlenmişse atla (BR sütunu)
             try:
-                current_status = ws.cell(row_index, cols.BB).value or ""
+                current_status = ws.cell(row_index, cols.BR).value or ""
                 if "Robot 8" in current_status and "✅" in current_status:
                     logger.info(f"⏭️  {market} zaten işlenmiş (Robot 8 ✅), atlanıyor...")
                     continue
@@ -113,16 +113,16 @@ def run():
                 logger.warning(f"  Kisisel AI analizi basarisiz: {market}")
                 continue
 
-            # Write to Google Sheets (U-V columns: Asistan AI Sinyal + Analiz)
+            # Write to Google Sheets (AG-AH columns: Asistan AI Sinyal + Analiz)
             try:
-                # U: Signal + Confidence (Asistan AI Sinyal)
-                ws.update_cell(row_index, cols.U, f"{analysis['signal']} ({analysis['confidence']}%)")
+                # AG: Signal + Confidence (Asistan AI Sinyal)
+                ws.update_cell(row_index, cols.AG, f"{analysis['signal']} ({analysis['confidence']}%)")
 
-                # V: Detailed reasoning (Asistan AI Analizi)
-                ws.update_cell(row_index, cols.V, analysis['reasoning'][:500])  # Truncate to 500 chars
+                # AH: Detailed reasoning (Asistan AI Analizi)
+                ws.update_cell(row_index, cols.AH, analysis['reasoning'][:500])  # Truncate to 500 chars
 
-                # Update status (Robot 8: BB sütunu)
-                ws.update_cell(row_index, cols.BB, status_text(8, True))
+                # Update status (Robot 8: BR sütunu)
+                ws.update_cell(row_index, cols.BR, status_text(8, True))
 
                 processed += 1
                 logger.info(f"  {analysis['signal']} ({analysis['confidence']}%)")

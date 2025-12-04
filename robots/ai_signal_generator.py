@@ -153,18 +153,18 @@ async def run():
             indicators = market_data["indicators"]
             row_index = market_data["row_index"]
 
-            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
             try:
-                robot1_status = ws.cell(row_index, cols.AU).value or ""
+                robot1_status = ws.cell(row_index, cols.BK).value or ""
                 if not is_ready_for_analysis(robot1_status):
                     skipped_not_ready += 1
                     continue  # Sessizce atla - henüz hazır değil
             except:
                 pass  # Status okunamazsa devam et
 
-            # 2. Robot 3 status kontrolü - Zaten işlenmişse atla (AW sütunu)
+            # 2. Robot 3 status kontrolü - Zaten işlenmişse atla (BM sütunu)
             try:
-                current_status = ws.cell(row_index, cols.AW).value or ""
+                current_status = ws.cell(row_index, cols.BM).value or ""
                 if "Robot 3" in current_status and "✅" in current_status:
                     logger.info(f"⏭️  {market} zaten işlenmiş (Robot 3 ✅), atlanıyor...")
                     continue
@@ -190,35 +190,35 @@ async def run():
 
             # Write to Google Sheets - Her AI için 2 sütun: Sinyal + Analiz
             try:
-                # GPT-4 (W-X sütunları: sinyal + analiz)
+                # GPT-4 (AI-AJ sütunları: sinyal + analiz)
                 if ai_signals.get("gpt4"):
                     gpt = ai_signals["gpt4"]
-                    ws.update_cell(row_index, cols.W, f"{gpt['signal']} ({gpt['confidence']}%)")
-                    ws.update_cell(row_index, cols.X, gpt['reasoning'][:MAX_REASONING_LENGTH])
+                    ws.update_cell(row_index, cols.AI, f"{gpt['signal']} ({gpt['confidence']}%)")
+                    ws.update_cell(row_index, cols.AJ, gpt['reasoning'][:MAX_REASONING_LENGTH])
 
-                # Claude (Y-Z sütunları: sinyal + analiz)
+                # Claude (AK-AL sütunları: sinyal + analiz)
                 if ai_signals.get("claude"):
                     cl = ai_signals["claude"]
-                    ws.update_cell(row_index, cols.Y, f"{cl['signal']} ({cl['confidence']}%)")
-                    ws.update_cell(row_index, cols.Z, cl['reasoning'][:MAX_REASONING_LENGTH])
+                    ws.update_cell(row_index, cols.AK, f"{cl['signal']} ({cl['confidence']}%)")
+                    ws.update_cell(row_index, cols.AL, cl['reasoning'][:MAX_REASONING_LENGTH])
 
-                # Gemini (AA-AB sütunları: sinyal + analiz)
+                # Gemini (AM-AN sütunları: sinyal + analiz)
                 if ai_signals.get("gemini"):
                     gem = ai_signals["gemini"]
-                    ws.update_cell(row_index, cols.AA, f"{gem['signal']} ({gem['confidence']}%)")
-                    ws.update_cell(row_index, cols.AB, gem['reasoning'][:MAX_REASONING_LENGTH])
+                    ws.update_cell(row_index, cols.AM, f"{gem['signal']} ({gem['confidence']}%)")
+                    ws.update_cell(row_index, cols.AN, gem['reasoning'][:MAX_REASONING_LENGTH])
 
-                # Grok (AC-AD sütunları: sinyal + analiz)
+                # Grok (AO-AP sütunları: sinyal + analiz)
                 if ai_signals.get("grok"):
                     grk = ai_signals["grok"]
-                    ws.update_cell(row_index, cols.AC, f"{grk['signal']} ({grk['confidence']}%)")
-                    ws.update_cell(row_index, cols.AD, grk['reasoning'][:MAX_REASONING_LENGTH])
+                    ws.update_cell(row_index, cols.AO, f"{grk['signal']} ({grk['confidence']}%)")
+                    ws.update_cell(row_index, cols.AP, grk['reasoning'][:MAX_REASONING_LENGTH])
 
-                # DeepSeek (AE-AF sütunları: sinyal + analiz)
+                # DeepSeek (AQ-AR sütunları: sinyal + analiz)
                 if ai_signals.get("deepseek"):
                     ds = ai_signals["deepseek"]
-                    ws.update_cell(row_index, cols.AE, f"{ds['signal']} ({ds['confidence']}%)")
-                    ws.update_cell(row_index, cols.AF, ds['reasoning'][:MAX_REASONING_LENGTH])
+                    ws.update_cell(row_index, cols.AQ, f"{ds['signal']} ({ds['confidence']}%)")
+                    ws.update_cell(row_index, cols.AR, ds['reasoning'][:MAX_REASONING_LENGTH])
 
                 # Calculate majority signal for risk calculation
                 signals_list = [s for s in ai_signals.values() if s]
@@ -233,17 +233,17 @@ async def run():
                     else:
                         majority = "HOLD"
 
-                    # Risk management (AM-AN for Entry/SL, AO-AQ for TP/RR)
+                    # Risk management (AY-BC for Entry/SL/TP/RR)
                     entry, sl, tp1, tp2, rr = calculate_risk_reward(price, majority, indicators)
                     if entry:
-                        ws.update_cell(row_index, cols.AM, f"${entry:,.2f}")  # Giriş Fiyatı
-                        ws.update_cell(row_index, cols.AN, f"${sl:,.2f}")     # Zarar Durdur
-                        ws.update_cell(row_index, cols.AO, f"${tp1:,.2f}")    # Kar Al 1
-                        ws.update_cell(row_index, cols.AP, f"${tp2:,.2f}")    # Kar Al 2
-                        ws.update_cell(row_index, cols.AQ, f"{rr:.2f}")       # Risk/Ödül
+                        ws.update_cell(row_index, cols.AY, f"${entry:,.2f}")  # Giriş Fiyatı
+                        ws.update_cell(row_index, cols.AZ, f"${sl:,.2f}")     # Zarar Durdur
+                        ws.update_cell(row_index, cols.BA, f"${tp1:,.2f}")    # Kar Al 1
+                        ws.update_cell(row_index, cols.BB, f"${tp2:,.2f}")    # Kar Al 2
+                        ws.update_cell(row_index, cols.BC, f"{rr:.2f}")       # Risk/Ödül
 
-                # Status (Robot 3: AW sütunu)
-                ws.update_cell(row_index, cols.AW, status_text(3, True))
+                # Status (Robot 3: BM sütunu)
+                ws.update_cell(row_index, cols.BM, status_text(3, True))
 
                 processed += 1
                 logger.info(f"  ✓ Satır {row_index} güncellendi")

@@ -90,7 +90,7 @@ def calculate_recent_performance(ws, cols, days: int = 30) -> Dict:
 
         for row in data_rows:
             # Skip if row is too short
-            if len(row) <= max(cols.AG, cols.BF) - 1:
+            if len(row) <= max(cols.AS, cols.BH) - 1:
                 continue
 
             # Get timestamp (A column)
@@ -110,23 +110,23 @@ def calculate_recent_performance(ws, cols, days: int = 30) -> Dict:
             except:
                 continue
 
-            # Get position status (BF column)
-            position_status = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
+            # Get position status (BH column)
+            position_status = row[cols.BH - 1] if len(row) > cols.BH - 1 else ""
 
             # Only include closed positions
             if position_status != "CLOSED":
                 continue
 
             # Get signal
-            final_signal_str = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
+            final_signal_str = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
 
             if not final_signal_str or "HOLD" in final_signal_str.upper():
                 continue
 
-            # Get hit status (TP1, TP2, SL)
-            tp1_hit = row[cols.BC - 1] if len(row) > cols.BC - 1 else ""
-            tp2_hit = row[cols.BD - 1] if len(row) > cols.BD - 1 else ""
-            sl_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
+            # Get hit status (TP1, TP2, SL) - columns BE-BG
+            tp1_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
+            tp2_hit = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
+            sl_hit = row[cols.BG - 1] if len(row) > cols.BG - 1 else ""
 
             # Determine if winning trade (TP hit) or losing trade (SL hit)
             is_winner = (tp1_hit == "YES" or tp2_hit == "YES")
@@ -196,13 +196,13 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         if not market or market == "":
             continue
 
-        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
-        robot1_status = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
+        robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
         if not is_ready_for_analysis(robot1_status):
             continue  # Henüz hazır değil
 
-        # Check if Robot 7 Command Center has made decision (AG column)
-        final_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
+        # Check if Robot 7 Command Center has made decision (AS column)
+        final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
         if not final_signal or final_signal == "":
             continue
 
@@ -210,36 +210,36 @@ def read_latest_signals(ws, cols) -> List[Dict]:
             price = parse_float(row[cols.C - 1]) if len(row) > cols.C - 1 else 0.0
             change_pct = parse_float(row[cols.E - 1]) if len(row) > cols.E - 1 else 0.0
 
-            # Robot 7 Command Center output (AG-AL)
-            final_confidence_str = row[cols.AH - 1] if len(row) > cols.AH - 1 else "0"
+            # Robot 7 Command Center output (AS-AX)
+            final_confidence_str = row[cols.AT - 1] if len(row) > cols.AT - 1 else "0"
             final_confidence = int(float(final_confidence_str.replace('%', ''))) if final_confidence_str else 0
 
-            final_reasoning = row[cols.AI - 1] if len(row) > cols.AI - 1 else ""
-            consensus_str = row[cols.AJ - 1] if len(row) > cols.AJ - 1 else "0"
+            final_reasoning = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+            consensus_str = row[cols.AV - 1] if len(row) > cols.AV - 1 else "0"
             consensus = int(float(consensus_str.replace('%', ''))) if consensus_str else 0
-            risk_level = row[cols.AK - 1] if len(row) > cols.AK - 1 else "MEDIUM"
-            suggested_action = row[cols.AL - 1] if len(row) > cols.AL - 1 else "SET ALERT"
+            risk_level = row[cols.AW - 1] if len(row) > cols.AW - 1 else "MEDIUM"
+            suggested_action = row[cols.AX - 1] if len(row) > cols.AX - 1 else "SET ALERT"
 
-            # Robot 3 AI signals (corrected columns: W-AF)
-            gpt4_signal = row[cols.W - 1] if len(row) > cols.W - 1 else ""
-            claude_signal = row[cols.Y - 1] if len(row) > cols.Y - 1 else ""
-            gemini_signal = row[cols.AA - 1] if len(row) > cols.AA - 1 else ""
-            grok_signal = row[cols.AC - 1] if len(row) > cols.AC - 1 else ""
-            deepseek_signal = row[cols.AE - 1] if len(row) > cols.AE - 1 else ""
+            # Robot 3 AI signals (columns: AI-AR)
+            gpt4_signal = row[cols.AI - 1] if len(row) > cols.AI - 1 else ""
+            claude_signal = row[cols.AK - 1] if len(row) > cols.AK - 1 else ""
+            gemini_signal = row[cols.AM - 1] if len(row) > cols.AM - 1 else ""
+            grok_signal = row[cols.AO - 1] if len(row) > cols.AO - 1 else ""
+            deepseek_signal = row[cols.AQ - 1] if len(row) > cols.AQ - 1 else ""
 
-            # Robot 8 Personal AI signal (U column)
-            personal_signal = row[cols.U - 1] if len(row) > cols.U - 1 else ""
+            # Robot 8 Personal AI signal (AG column)
+            personal_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
 
             # Indicators (corrected columns)
             rsi = row[cols.G - 1] if len(row) > cols.G - 1 else ""
             trend = row[cols.T - 1] if len(row) > cols.T - 1 else ""
 
-            # Entry/TP/SL from Robot 3 (AM-AN for Entry/SL, AO-AQ for TP/RR)
-            entry_str = row[cols.AM - 1] if len(row) > cols.AM - 1 else ""
-            sl_str = row[cols.AN - 1] if len(row) > cols.AN - 1 else ""
-            tp1_str = row[cols.AO - 1] if len(row) > cols.AO - 1 else ""
-            tp2_str = row[cols.AP - 1] if len(row) > cols.AP - 1 else ""
-            rr_str = row[cols.AQ - 1] if len(row) > cols.AQ - 1 else ""
+            # Entry/TP/SL from Risk columns (AY-BC)
+            entry_str = row[cols.AY - 1] if len(row) > cols.AY - 1 else ""
+            sl_str = row[cols.AZ - 1] if len(row) > cols.AZ - 1 else ""
+            tp1_str = row[cols.BA - 1] if len(row) > cols.BA - 1 else ""
+            tp2_str = row[cols.BB - 1] if len(row) > cols.BB - 1 else ""
+            rr_str = row[cols.BC - 1] if len(row) > cols.BC - 1 else ""
 
             # Parse Entry/TP/SL (format: "$95,000.00")
             def extract_price(price_str):
@@ -682,13 +682,13 @@ def run():
         success = send_signals_individually(bot_token, chat_id, filtered_signals, temporal_data, performance_data)
 
         if success:
-            # Update Robot 5 status in Google Sheets (AY column)
+            # Update Robot 5 status in Google Sheets (BO column)
             logger.info("Updating Robot 5 status in Google Sheets...")
             updated = 0
             for signal in signals:
                 try:
                     row_idx = signal['row_index']
-                    ws.update_cell(row_idx, cols.AY, status_text(5, True))
+                    ws.update_cell(row_idx, cols.BO, status_text(5, True))
                     updated += 1
                 except Exception as e:
                     logger.warning(f"Failed to update status for {signal['market']}: {e}")

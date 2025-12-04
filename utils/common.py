@@ -86,9 +86,9 @@ def batch_update_row(
 
     Example:
         batch_update_row(ws, 2, {
-            cols.AG: "BUY",
-            cols.AH: "85%",
-            cols.AI: "Strong bullish signal"
+            cols.AS: "BUY",
+            cols.AT: "85%",
+            cols.AU: "Strong bullish signal"
         })
     """
     updates = [(row, col, value) for col, value in col_values.items()]
@@ -200,9 +200,9 @@ def get_batch_number(ws: Any, cols: Any) -> int:
             if len(row) > cols.B - 1:
                 market_value = row[cols.B - 1]
                 if market_value and ("📊" in market_value or "RAPORU" in market_value):
-                    # Check AU column for status
-                    if len(row) > cols.AU - 1:
-                        status = row[cols.AU - 1]
+                    # Check BK column for status (Robot 1 - YENİ SCHEMA)
+                    if len(row) > cols.BK - 1:
+                        status = row[cols.BK - 1]
                         if BATCH_STATUS_READY in str(status):
                             # Found last "Analiz Hazır", return count + 1
                             return min(count + 1, BATCH_SIZE)

@@ -80,13 +80,13 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         if not market or market == "":
             continue
 
-        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
-        robot1_status = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
+        robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
         if not is_ready_for_analysis(robot1_status):
             continue  # Henüz hazır değil
 
-        # Check if this row has Robot 7 Command Center decision (AG column)
-        final_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
+        # Check if this row has Robot 7 Command Center decision (AS column)
+        final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
         if not final_signal or final_signal == "":
             continue  # Skip rows without Robot 7 decision
 
@@ -94,13 +94,13 @@ def read_latest_signals(ws, cols) -> List[Dict]:
             # Parse data (handle Turkish decimal format)
             price = parse_float(row[cols.C - 1]) if len(row) > cols.C - 1 else 0.0
 
-            # Robot 7 Command Center output (AG-AL)
-            final_confidence_str = row[cols.AH - 1] if len(row) > cols.AH - 1 else "0"
+            # Robot 7 Command Center output (AS-AX)
+            final_confidence_str = row[cols.AT - 1] if len(row) > cols.AT - 1 else "0"
             final_confidence = int(float(final_confidence_str.replace('%', ''))) if final_confidence_str else 0
 
-            final_reasoning = row[cols.AI - 1] if len(row) > cols.AI - 1 else ""
-            risk_level = row[cols.AK - 1] if len(row) > cols.AK - 1 else "MEDIUM"
-            suggested_action = row[cols.AL - 1] if len(row) > cols.AL - 1 else "SET ALERT"
+            final_reasoning = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+            risk_level = row[cols.AW - 1] if len(row) > cols.AW - 1 else "MEDIUM"
+            suggested_action = row[cols.AX - 1] if len(row) > cols.AX - 1 else "SET ALERT"
 
             # Parse indicators (corrected columns, handle Turkish decimal format)
             indicators = {}
@@ -343,13 +343,13 @@ def run():
                 failed += 1
                 continue
 
-        # Update Robot 4 status in Google Sheets (AX column)
+        # Update Robot 4 status in Google Sheets (BN column)
         if processed_rows:
             logger.info("Updating Robot 4 status in Google Sheets...")
             updated = 0
             for row_idx in processed_rows:
                 try:
-                    ws.update_cell(row_idx, cols.AX, status_text(4, True))
+                    ws.update_cell(row_idx, cols.BN, status_text(4, True))
                     updated += 1
                 except Exception as e:
                     logger.warning(f"Failed to update status for row {row_idx}: {e}")

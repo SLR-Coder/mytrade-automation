@@ -235,10 +235,10 @@ def run():
             row_index = i
 
             # Check if this row has a trading signal
-            if len(row) <= cols.AG - 1:
+            if len(row) <= cols.AS - 1:
                 continue
 
-            final_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
+            final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
 
             # Only monitor BUY/SELL signals (not HOLD)
             if final_signal not in ["BUY", "SELL"]:
@@ -251,11 +251,11 @@ def run():
             if not market or "📊" in market or "RAPORU" in market:
                 continue
 
-            # Get Entry/TP/SL prices (Robot 3 columns: AM-AQ)
-            entry_str = row[cols.AM - 1] if len(row) > cols.AM - 1 else ""
-            sl_str = row[cols.AN - 1] if len(row) > cols.AN - 1 else ""
-            tp1_str = row[cols.AO - 1] if len(row) > cols.AO - 1 else ""
-            tp2_str = row[cols.AP - 1] if len(row) > cols.AP - 1 else ""
+            # Get Entry/TP/SL prices (Risk columns: AY-BB)
+            entry_str = row[cols.AY - 1] if len(row) > cols.AY - 1 else ""
+            sl_str = row[cols.AZ - 1] if len(row) > cols.AZ - 1 else ""
+            tp1_str = row[cols.BA - 1] if len(row) > cols.BA - 1 else ""
+            tp2_str = row[cols.BB - 1] if len(row) > cols.BB - 1 else ""
 
             # Parse prices
             entry_price = parse_float(entry_str.replace("$", "").replace(",", "")) if entry_str else None
@@ -267,11 +267,11 @@ def run():
             if not entry_price or not sl_price:
                 continue
 
-            # Check hit status (new columns: BC, BD, BE, BF)
-            tp1_hit = row[cols.BC - 1] if len(row) > cols.BC - 1 else ""
-            tp2_hit = row[cols.BD - 1] if len(row) > cols.BD - 1 else ""
-            sl_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
-            position_status = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
+            # Check hit status (TP/SL tracking columns: BE-BH)
+            tp1_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
+            tp2_hit = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
+            sl_hit = row[cols.BG - 1] if len(row) > cols.BG - 1 else ""
+            position_status = row[cols.BH - 1] if len(row) > cols.BH - 1 else ""
 
             # Skip closed positions
             if position_status == "CLOSED":
@@ -295,8 +295,8 @@ def run():
 
         if not open_positions:
             logger.info("  ℹ️  Takip edilecek açık pozisyon yok")
-            # Update Robot 9 status
-            ws.update_cell(2, cols.BG, status_text(9, True))
+            # Update Robot 9 status (BS sütunu)
+            ws.update_cell(2, cols.BS, status_text(9, True))
             return
 
         # Monitor each position
@@ -332,8 +332,8 @@ def run():
                     send_tp_notification(bot, telegram_chat_id, pos['market'], pos['signal'],
                                         "TP1", pos['entry'], pos['tp1'], current_price, pips, pct)
 
-                    # Update sheet
-                    ws.update_cell(pos['row_index'], cols.BC, "YES")
+                    # Update sheet (BE: TP1 Hit)
+                    ws.update_cell(pos['row_index'], cols.BE, "YES")
                     time.sleep(SHEETS_RATE_LIMIT_SLEEP)
 
                     notifications_sent += 1
@@ -354,9 +354,9 @@ def run():
                     send_tp_notification(bot, telegram_chat_id, pos['market'], pos['signal'],
                                         "TP2", pos['entry'], pos['tp2'], current_price, pips, pct)
 
-                    # Update sheet - mark position as closed
-                    ws.update_cell(pos['row_index'], cols.BD, "YES")
-                    ws.update_cell(pos['row_index'], cols.BF, "CLOSED")
+                    # Update sheet - mark position as closed (BF: TP2 Hit, BH: Position Status)
+                    ws.update_cell(pos['row_index'], cols.BF, "YES")
+                    ws.update_cell(pos['row_index'], cols.BH, "CLOSED")
                     time.sleep(SHEETS_RATE_LIMIT_SLEEP)
 
                     notifications_sent += 1
@@ -377,9 +377,9 @@ def run():
                     send_sl_notification(bot, telegram_chat_id, pos['market'], pos['signal'],
                                         pos['entry'], pos['sl'], current_price, pips, pct)
 
-                    # Update sheet - mark position as closed
-                    ws.update_cell(pos['row_index'], cols.BE, "YES")
-                    ws.update_cell(pos['row_index'], cols.BF, "CLOSED")
+                    # Update sheet - mark position as closed (BG: SL Hit, BH: Position Status)
+                    ws.update_cell(pos['row_index'], cols.BG, "YES")
+                    ws.update_cell(pos['row_index'], cols.BH, "CLOSED")
                     time.sleep(SHEETS_RATE_LIMIT_SLEEP)
 
                     notifications_sent += 1
@@ -387,8 +387,8 @@ def run():
             monitored += 1
             logger.info("")
 
-        # Update Robot 9 status (BG column)
-        ws.update_cell(2, cols.BG, status_text(9, True))
+        # Update Robot 9 status (BS sütunu)
+        ws.update_cell(2, cols.BS, status_text(9, True))
 
         logger.info("=" * 80)
         logger.info(f"✅ ROBOT 9 TAMAMLANDI")

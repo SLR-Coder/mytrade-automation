@@ -126,7 +126,7 @@ def collect_weekly_trades(ws, cols, days: int = 7) -> List[Dict]:
         row_index = i
 
         # Skip if row is too short
-        if len(row) <= max(cols.AG, cols.AM, cols.BF) - 1:
+        if len(row) <= max(cols.AS, cols.AY, cols.BH) - 1:
             continue
 
         # Get timestamp (A column)
@@ -147,8 +147,8 @@ def collect_weekly_trades(ws, cols, days: int = 7) -> List[Dict]:
             # If can't parse, include it anyway
             pass
 
-        # Get position status (BF column)
-        position_status = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
+        # Get position status (BH column)
+        position_status = row[cols.BH - 1] if len(row) > cols.BH - 1 else ""
 
         # Only include closed positions
         if position_status != "CLOSED":
@@ -156,27 +156,27 @@ def collect_weekly_trades(ws, cols, days: int = 7) -> List[Dict]:
 
         # Get market and signal
         market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
-        final_signal_str = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
+        final_signal_str = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
         final_signal = parse_signal_from_cell(final_signal_str)
 
         if not market or not final_signal or final_signal == "HOLD":
             continue
 
-        # Get prices
-        entry_str = row[cols.AM - 1] if len(row) > cols.AM - 1 else ""
-        tp1_str = row[cols.AO - 1] if len(row) > cols.AO - 1 else ""
-        tp2_str = row[cols.AP - 1] if len(row) > cols.AP - 1 else ""
-        sl_str = row[cols.AN - 1] if len(row) > cols.AN - 1 else ""
+        # Get prices (Risk columns: AY-BB)
+        entry_str = row[cols.AY - 1] if len(row) > cols.AY - 1 else ""
+        tp1_str = row[cols.BA - 1] if len(row) > cols.BA - 1 else ""
+        tp2_str = row[cols.BB - 1] if len(row) > cols.BB - 1 else ""
+        sl_str = row[cols.AZ - 1] if len(row) > cols.AZ - 1 else ""
 
         entry_price = parse_price_from_cell(entry_str)
 
         if not entry_price:
             continue
 
-        # Get hit status
-        tp1_hit = row[cols.BC - 1] if len(row) > cols.BC - 1 else ""
-        tp2_hit = row[cols.BD - 1] if len(row) > cols.BD - 1 else ""
-        sl_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
+        # Get hit status (TP/SL tracking columns: BE-BG)
+        tp1_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
+        tp2_hit = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
+        sl_hit = row[cols.BG - 1] if len(row) > cols.BG - 1 else ""
 
         # Determine outcome
         outcome = None
@@ -429,8 +429,8 @@ def run():
             }
             requests.post(url, json=payload, timeout=30).raise_for_status()
 
-            # Update Robot 6 status
-            ws.update_cell(2, cols.AZ, status_text(6, True))
+            # Update Robot 6 status (BP sütunu)
+            ws.update_cell(2, cols.BP, status_text(6, True))
             return
 
         # Calculate statistics
@@ -447,8 +447,8 @@ def run():
         # Send Telegram report
         send_weekly_report(telegram_token, telegram_chat_id, stats, trades)
 
-        # Update Robot 6 status (AZ column)
-        ws.update_cell(2, cols.AZ, status_text(6, True))
+        # Update Robot 6 status (BP sütunu)
+        ws.update_cell(2, cols.BP, status_text(6, True))
 
         logger.info("=" * 80)
         logger.info(f"✅ ROBOT 6 TAMAMLANDI")
