@@ -178,7 +178,8 @@ async def main_async():
     5. Robot 7: AI Command Center - Meta-analysis (reads Robot 3 + Robot 8)
     6. Robot 4: Chart Generator - Create charts for signals
     7. Robot 5: Telegram Publisher - Publish to channel
-    8. Robot 6: Performance Tracker - Track published signals (EN SON)
+    8. Robot 6: Performance Tracker - Track published signals
+    9. Robot 9: TP/SL Monitor - Real-time position monitoring (EN SON)
 
     WHY THIS ORDER?
     - Data collection first (Robot 1)
@@ -188,7 +189,8 @@ async def main_async():
     - Robot 7: Reads ALL AIs (3+8) and does meta-analysis → columns AF-AI
     - Charts after signals ready (Robot 4)
     - Publishing (Robot 5)
-    - Performance tracking LAST - tracks published signals (Robot 6)
+    - Performance tracking after publishing (Robot 6)
+    - TP/SL monitoring LAST - checks if targets hit (Robot 9)
     """
     start_time = datetime.now()
 
@@ -210,7 +212,7 @@ async def main_async():
         logger.info(f"📋 Komut satırından seçili robotlar: {robot_select}")
     else:
         # Fallback to environment variable
-        robot_select = os.getenv("ROBOT", "1,2,3,4,5,6,7,8")
+        robot_select = os.getenv("ROBOT", "1,2,3,4,5,6,7,8,9")
         logger.info(f"📋 Environment'tan seçili robotlar: {robot_select}")
 
     results: Dict[str, bool] = {}
@@ -269,12 +271,20 @@ async def main_async():
                 "Robot 5: Telegram Publisher"
             )
 
-        # PHASE 5: PERFORMANCE TRACKING (EN SON - yayınlanan sinyalleri takip eder)
+        # PHASE 5: PERFORMANCE TRACKING
         if "6" in robot_select and not shutdown_requested:
             from robots import performance_tracker
             results["Robot 6: Performance Tracker"] = await run_async_robot(
                 performance_tracker,
                 "Robot 6: Performance Tracker"
+            )
+
+        # PHASE 6: TP/SL MONITORING (EN SON - TP1/TP2/SL seviyelerini kontrol eder)
+        if "9" in robot_select and not shutdown_requested:
+            from robots import tp_monitor
+            results["Robot 9: TP/SL Monitor"] = run_sync_robot(
+                tp_monitor,
+                "Robot 9: TP/SL Monitor"
             )
 
         # Calculate execution time
