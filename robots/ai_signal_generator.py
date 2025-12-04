@@ -16,7 +16,10 @@ from config.constants import (
     RISK_VOLATILITY_MULTIPLIER_TP1, RISK_VOLATILITY_MULTIPLIER_TP2,
     RISK_VOLATILITY_MULTIPLIER_SL, DEFAULT_SHEET_TAB
 )
-from utils.common import status_text, parse_float, get_latest_market_data, get_last_6_batches
+from utils.common import (
+    status_text, parse_float, get_latest_market_data,
+    get_last_6_batches, analyze_temporal_trend
+)  # DRY: All common functions from single source
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
@@ -114,43 +117,7 @@ def calculate_risk_reward(price: float, signal: str, indicators: Dict):
     return entry, sl, tp1, tp2, risk_reward
 
 
-def analyze_temporal_trend(batches: List[Dict]) -> str:
-    """
-    Analyze temporal trend from 6 batches of data
-
-    Args:
-        batches: List of batch data (oldest to newest)
-
-    Returns:
-        Human-readable trend summary string
-    """
-    if not batches or len(batches) < 2:
-        return "İlk veri - trend analizi yok"
-
-    prices = [b['price'] for b in batches if b.get('price', 0) > 0]
-    if len(prices) < 2:
-        return "Yetersiz fiyat verisi"
-
-    # Calculate price movement
-    start_price = prices[0]
-    end_price = prices[-1]
-    price_change_pct = ((end_price - start_price) / start_price) * 100
-
-    # Calculate momentum (last 3 vs first 3)
-    if len(prices) >= 6:
-        first_half_avg = sum(prices[:3]) / 3
-        second_half_avg = sum(prices[3:]) / 3
-        momentum = "GÜÇLÜ YUKARI" if second_half_avg > first_half_avg * 1.01 else \
-                   "GÜÇLÜ AŞAĞI" if second_half_avg < first_half_avg * 0.99 else "NÖTR"
-    else:
-        momentum = "YUKARI" if end_price > start_price else "AŞAĞI" if end_price < start_price else "NÖTR"
-
-    # Count upward movements
-    up_count = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
-    consistency = f"{up_count}/{len(prices)-1}"
-
-    summary = f"Son 30 dk: Fiyat {price_change_pct:+.2f}%, Momentum: {momentum}, Tutarlılık: {consistency} yukarı"
-    return summary
+# analyze_temporal_trend removed - now imported from utils.common
 
 
 async def run():

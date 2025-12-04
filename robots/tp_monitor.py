@@ -14,7 +14,8 @@ from telegram.constants import ParseMode
 
 from config.constants import (
     SHEETS_RATE_LIMIT_SLEEP,
-    DEFAULT_SHEET_TAB
+    DEFAULT_SHEET_TAB,
+    CRYPTO_SYMBOLS
 )
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
@@ -44,8 +45,8 @@ def get_current_price(market: str) -> Optional[float]:
         Current price or None if failed
     """
     try:
-        # Determine market type
-        if "/" in market and any(crypto in market.upper() for crypto in ["BTC", "ETH", "SOL", "USDT", "USDC", "XRP", "BNB"]):
+        # Determine market type using constants
+        if "/" in market and any(crypto in market.upper() for crypto in CRYPTO_SYMBOLS):
             # Crypto market - use Binance
             # Convert "BTC/USDT" to "BTCUSDT"
             symbol = market.replace("/", "")

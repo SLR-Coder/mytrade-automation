@@ -16,6 +16,7 @@ from pathlib import Path
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
+from utils.common import status_text, parse_float  # DRY: Import from common
 from utils.api_clients import BinanceClient, PolygonClient
 
 logging.basicConfig(level=logging.INFO)
@@ -26,23 +27,6 @@ SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
 CHART_DIR = os.getenv("CHART_DIR", "/tmp/charts")
 CHART_CANDLES = int(os.getenv("CHART_CANDLES", "100"))  # Number of candles to plot
 MIN_CONFIDENCE = int(os.getenv("MIN_CONFIDENCE", "65"))  # Only chart high-confidence signals
-
-
-def status_text(robot_no: int, ok: bool) -> str:
-    """Generate status text for robot"""
-    return f"Robot {robot_no} {'✅' if ok else '❌'}"
-
-
-def parse_float(value: str) -> float:
-    """Parse float from string, handling Turkish decimal format (comma)"""
-    if not value or value.strip() == "":
-        return 0.0
-    try:
-        # Replace Turkish decimal comma with dot
-        value = str(value).replace(",", ".")
-        return float(value)
-    except:
-        return 0.0
 
 
 def ensure_chart_dir():

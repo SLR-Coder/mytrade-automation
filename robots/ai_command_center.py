@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
+from utils.common import status_text  # DRY: Import from common
 from utils.assistant_ai import create_assistant, BALANCED_PROFILE
 from utils.meta_analyzer import create_command_center
 
@@ -22,11 +23,6 @@ logger = logging.getLogger("Robot-7-AICommandCenter")
 
 # Environment variables
 SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
-
-
-def status_text(robot_no: int, ok: bool) -> str:
-    """Generate status text for robot"""
-    return f"Robot {robot_no} {'✅' if ok else '❌'}"
 
 
 def parse_ai_column(value: str, ai_name: str) -> Optional[Dict]:

@@ -116,6 +116,51 @@ TOP_NEWS_COUNT = 3
 
 
 # ============================================================================
+# TEMPORAL TREND ANALYSIS
+# ============================================================================
+TEMPORAL_BATCH_COUNT = 6
+"""Number of batches for temporal trend analysis"""
+
+TEMPORAL_BATCH_MINUTES = 5
+"""Minutes per batch"""
+
+TEMPORAL_TOTAL_MINUTES = TEMPORAL_BATCH_COUNT * TEMPORAL_BATCH_MINUTES  # 30 minutes
+"""Total minutes for temporal trend analysis"""
+
+MOMENTUM_THRESHOLD_STRONG = 0.01
+"""Threshold for strong momentum detection (1% change between halves)"""
+
+
+# ============================================================================
+# MARKET DETECTION
+# ============================================================================
+CRYPTO_SYMBOLS = frozenset(["BTC", "ETH", "SOL", "USDT", "USDC", "XRP", "BNB", "DOGE", "ADA", "DOT"])
+"""Known cryptocurrency symbols for market type detection"""
+
+TOTAL_MARKETS = 27
+"""Total number of markets tracked (5 categories)"""
+
+MARKETS_PER_CATEGORY = 5
+"""Default markets per category (FOREX has 7)"""
+
+
+# ============================================================================
+# PERFORMANCE TRACKING
+# ============================================================================
+PERFORMANCE_LOOKBACK_DAYS = 30
+"""Default days to look back for performance metrics"""
+
+WIN_RATE_THRESHOLD_EXCELLENT = 70
+"""Win rate threshold for 'Excellent' rating (70%+)"""
+
+WIN_RATE_THRESHOLD_GOOD = 60
+"""Win rate threshold for 'Good' rating (60%+)"""
+
+WIN_RATE_THRESHOLD_FAIR = 50
+"""Win rate threshold for 'Fair' rating (50%+)"""
+
+
+# ============================================================================
 # AI MODEL NAMES (Environment Overridable)
 # ============================================================================
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-thinking-exp-01-21"

@@ -3,8 +3,25 @@
 API clients for market data providers
 - Binance (Crypto)
 - Polygon.io (Forex)
-- AllTick (Gold/Commodities)
+- TwelveData (Universal - Forex, Crypto, Stocks, Indices)
 - Alpha Vantage (Backup + Technical Indicators)
+- TCMB (Turkish Central Bank - TRY rates)
+- Frankfurter (ECB forex rates)
+
+ERROR HANDLING STANDARD:
+------------------------
+1. get_price() / get_quote() methods:
+   - RAISE exception on failure (critical operations)
+   - These are point-in-time queries that must succeed
+
+2. get_candles() / get_time_series() methods:
+   - RETURN empty list [] on failure (graceful degradation)
+   - Historical data can be missing without blocking the system
+   - Callers should check for empty results
+
+3. All methods:
+   - Log errors with logger.error() before raising/returning
+   - Use specific exception messages for debugging
 """
 
 import requests

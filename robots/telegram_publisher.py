@@ -19,7 +19,9 @@ from telegram.constants import ParseMode
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
-from utils.common import get_last_6_batches
+from utils.common import (
+    get_last_6_batches, status_text, parse_float, analyze_temporal_trend
+)  # DRY: Import from common
 from utils.telegram_formatter import get_performance_badge
 
 logging.basicConfig(level=logging.INFO)
@@ -31,11 +33,6 @@ MIN_CONFIDENCE = int(os.getenv("MIN_CONFIDENCE", "65"))
 MAX_SIGNALS = int(os.getenv("MAX_SIGNALS", "5"))
 CHART_DIR = os.getenv("CHART_DIR", "/tmp/charts")
 SEND_CHARTS = os.getenv("SEND_CHARTS", "true").lower() == "true"
-
-
-def status_text(robot_no: int, ok: bool) -> str:
-    """Generate status text for robot"""
-    return f"Robot {robot_no} {'✅' if ok else '❌'}"
 
 
 def get_signal_emoji(signal: str) -> str:
@@ -61,16 +58,7 @@ def get_trend_emoji(trend: str) -> str:
         return "➡️"
 
 
-def parse_float(value: str) -> float:
-    """Parse float from string, handling Turkish decimal format (comma)"""
-    if not value or value.strip() == "":
-        return 0.0
-    try:
-        # Replace Turkish decimal comma with dot
-        value = str(value).replace(",", ".")
-        return float(value)
-    except:
-        return 0.0
+# parse_float removed - now imported from utils.common
 
 
 def calculate_recent_performance(ws, cols, days: int = 30) -> Dict:
@@ -358,69 +346,7 @@ def format_overview_message(signals: List[Dict]) -> str:
     return message
 
 
-def analyze_temporal_trend(batches: List[Dict]) -> Dict:
-    """
-    Analyze temporal trend from 6 batches of data
-
-    Args:
-        batches: List of batch data (oldest to newest)
-
-    Returns:
-        Dictionary with trend statistics
-    """
-    if not batches or len(batches) < 2:
-        return {
-            "available": False,
-            "price_change_pct": 0,
-            "momentum": "YETERSİZ VERİ",
-            "consistency": "0/0"
-        }
-
-    prices = [b['price'] for b in batches if b.get('price', 0) > 0]
-    if len(prices) < 2:
-        return {
-            "available": False,
-            "price_change_pct": 0,
-            "momentum": "YETERSİZ VERİ",
-            "consistency": "0/0"
-        }
-
-    # Calculate price movement
-    start_price = prices[0]
-    end_price = prices[-1]
-    price_change_pct = ((end_price - start_price) / start_price) * 100
-
-    # Calculate momentum (last 3 vs first 3)
-    if len(prices) >= 6:
-        first_half_avg = sum(prices[:3]) / 3
-        second_half_avg = sum(prices[3:]) / 3
-
-        if second_half_avg > first_half_avg * 1.01:
-            momentum = "GÜÇLÜ YUKARI ⬆️"
-        elif second_half_avg < first_half_avg * 0.99:
-            momentum = "GÜÇLÜ AŞAĞI ⬇️"
-        else:
-            momentum = "NÖTR ➡️"
-    else:
-        if end_price > start_price:
-            momentum = "YUKARI ⬆️"
-        elif end_price < start_price:
-            momentum = "AŞAĞI ⬇️"
-        else:
-            momentum = "NÖTR ➡️"
-
-    # Count upward movements
-    up_count = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
-    consistency = f"{up_count}/{len(prices)-1}"
-
-    return {
-        "available": True,
-        "price_change_pct": price_change_pct,
-        "momentum": momentum,
-        "consistency": consistency,
-        "start_price": start_price,
-        "end_price": end_price
-    }
+# analyze_temporal_trend removed - now imported from utils.common
 
 
 def format_single_signal(signal: Dict, index: int, temporal_trend: Dict = None, performance_data: Dict = None) -> str:

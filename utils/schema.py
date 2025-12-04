@@ -2,10 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 Google Sheets schema utilities
+
+Type hints use TYPE_CHECKING to avoid circular imports at runtime.
 """
 
 import logging
-from typing import List
+from typing import List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import gspread
 
 logger = logging.getLogger("Schema")
 
@@ -173,14 +178,14 @@ def create_header_row() -> List[str]:
     ]
     return headers
 
-def resolve_columns(worksheet) -> ColumnMapping:
+def resolve_columns(worksheet: "gspread.Worksheet") -> ColumnMapping:
     """
     Get column mapping for worksheet
 
     Args:
-        worksheet: Google Sheets worksheet
+        worksheet: Google Sheets worksheet object
 
     Returns:
-        ColumnMapping object
+        ColumnMapping object with all column indices
     """
     return ColumnMapping()

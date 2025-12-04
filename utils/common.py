@@ -6,9 +6,116 @@ Eliminates code duplication and provides consistent behavior
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+import time
+from typing import Dict, List, Optional, Any, Tuple
+import gspread
 
 logger = logging.getLogger("CommonUtils")
+
+
+# ============================================================================
+# GOOGLE SHEETS BATCH UPDATE UTILITIES
+# ============================================================================
+
+def batch_update_cells(
+    worksheet: gspread.Worksheet,
+    updates: List[Tuple[int, int, Any]],
+    rate_limit_sleep: float = 0.1
+) -> int:
+    """
+    Batch update multiple cells in Google Sheets with a single API call.
+
+    PERFORMANCE: This is 10-50x faster than individual update_cell() calls!
+    Google Sheets API allows up to 100,000 cells per batch.
+
+    Args:
+        worksheet: gspread Worksheet object
+        updates: List of (row, col, value) tuples
+                 row and col are 1-based indices
+        rate_limit_sleep: Sleep after batch (default 0.1s)
+
+    Returns:
+        Number of cells updated
+
+    Example:
+        updates = [
+            (2, 5, "BUY"),      # Row 2, Col 5 = "BUY"
+            (2, 6, "75%"),      # Row 2, Col 6 = "75%"
+            (3, 5, "SELL"),     # Row 3, Col 5 = "SELL"
+        ]
+        batch_update_cells(ws, updates)
+    """
+    if not updates:
+        return 0
+
+    # Convert to gspread Cell objects
+    cells = []
+    for row, col, value in updates:
+        cell = gspread.Cell(row=row, col=col, value=str(value) if value is not None else "")
+        cells.append(cell)
+
+    # Single API call for all updates
+    worksheet.update_cells(cells, value_input_option='USER_ENTERED')
+
+    # Rate limiting
+    if rate_limit_sleep > 0:
+        time.sleep(rate_limit_sleep)
+
+    logger.debug(f"Batch updated {len(cells)} cells")
+    return len(cells)
+
+
+def batch_update_row(
+    worksheet: gspread.Worksheet,
+    row: int,
+    col_values: Dict[int, Any],
+    rate_limit_sleep: float = 0.1
+) -> int:
+    """
+    Update multiple columns in a single row with batch update.
+
+    Args:
+        worksheet: gspread Worksheet object
+        row: Row number (1-based)
+        col_values: Dict mapping column number to value
+                    {5: "BUY", 6: "75%", 7: "Analysis text"}
+        rate_limit_sleep: Sleep after batch
+
+    Returns:
+        Number of cells updated
+
+    Example:
+        batch_update_row(ws, 2, {
+            cols.AG: "BUY",
+            cols.AH: "85%",
+            cols.AI: "Strong bullish signal"
+        })
+    """
+    updates = [(row, col, value) for col, value in col_values.items()]
+    return batch_update_cells(worksheet, updates, rate_limit_sleep)
+
+
+def batch_update_column(
+    worksheet: gspread.Worksheet,
+    col: int,
+    row_values: Dict[int, Any],
+    rate_limit_sleep: float = 0.1
+) -> int:
+    """
+    Update multiple rows in a single column with batch update.
+
+    Args:
+        worksheet: gspread Worksheet object
+        col: Column number (1-based)
+        row_values: Dict mapping row number to value
+                    {2: "Robot 1 ✅", 3: "Robot 2 ✅"}
+        rate_limit_sleep: Sleep after batch
+
+    Returns:
+        Number of cells updated
+    """
+    updates = [(row, col, value) for row, value in row_values.items()]
+    return batch_update_cells(worksheet, updates, rate_limit_sleep)
 
 
 def parse_float(value: Optional[Any]) -> Optional[float]:
@@ -308,3 +415,87 @@ def get_last_6_batches(ws: Any, cols: Any) -> Dict[str, List[Dict]]:
 
     logger.info(f"✓ {len(temporal_data)} piyasa için temporal veri hazır (her biri {len(separator_indices)} batch)")
     return temporal_data
+
+
+def analyze_temporal_trend(batches: List[Dict]) -> Dict:
+    """
+    Analyze temporal trend from 6 batches of data (30 minutes)
+
+    This is the SINGLE SOURCE OF TRUTH for temporal trend analysis.
+    Used by Robot 3, Robot 5, and Robot 8.
+
+    Args:
+        batches: List of batch data (oldest to newest)
+                 Each batch: {"price": float, "indicators": dict, ...}
+
+    Returns:
+        Dictionary with trend statistics:
+        {
+            "available": True/False,
+            "price_change_pct": float,
+            "momentum": str,
+            "consistency": str,
+            "start_price": float,
+            "end_price": float,
+            "summary": str  # Human-readable summary
+        }
+    """
+    if not batches or len(batches) < 2:
+        return {
+            "available": False,
+            "price_change_pct": 0,
+            "momentum": "YETERSİZ VERİ",
+            "consistency": "0/0",
+            "summary": "İlk veri - trend analizi yok"
+        }
+
+    prices = [b['price'] for b in batches if b.get('price', 0) > 0]
+    if len(prices) < 2:
+        return {
+            "available": False,
+            "price_change_pct": 0,
+            "momentum": "YETERSİZ VERİ",
+            "consistency": "0/0",
+            "summary": "Yetersiz fiyat verisi"
+        }
+
+    # Calculate price movement
+    start_price = prices[0]
+    end_price = prices[-1]
+    price_change_pct = ((end_price - start_price) / start_price) * 100
+
+    # Calculate momentum (last 3 vs first 3)
+    if len(prices) >= 6:
+        first_half_avg = sum(prices[:3]) / 3
+        second_half_avg = sum(prices[3:]) / 3
+
+        if second_half_avg > first_half_avg * 1.01:
+            momentum = "GÜÇLÜ YUKARI ⬆️"
+        elif second_half_avg < first_half_avg * 0.99:
+            momentum = "GÜÇLÜ AŞAĞI ⬇️"
+        else:
+            momentum = "NÖTR ➡️"
+    else:
+        if end_price > start_price:
+            momentum = "YUKARI ⬆️"
+        elif end_price < start_price:
+            momentum = "AŞAĞI ⬇️"
+        else:
+            momentum = "NÖTR ➡️"
+
+    # Count upward movements
+    up_count = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
+    consistency = f"{up_count}/{len(prices)-1}"
+
+    # Human-readable summary
+    summary = f"Son 30 dk: Fiyat {price_change_pct:+.2f}%, Momentum: {momentum}, Tutarlılık: {consistency} yukarı"
+
+    return {
+        "available": True,
+        "price_change_pct": price_change_pct,
+        "momentum": momentum,
+        "consistency": consistency,
+        "start_price": start_price,
+        "end_price": end_price,
+        "summary": summary
+    }

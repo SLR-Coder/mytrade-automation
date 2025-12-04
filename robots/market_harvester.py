@@ -16,6 +16,7 @@ from config.markets import MARKETS, get_market_category
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
+from utils.common import status_text  # DRY: Import from common
 from utils.api_clients import (
     BinanceClient, PolygonClient, AlphaVantageClient,
     GoldPriceClient, TCMBClient, FrankfurterClient, TwelveDataClient
@@ -32,14 +33,9 @@ CANDLE_LIMIT = int(os.getenv("CANDLE_LIMIT", "200"))  # For technical indicators
 # ============================================================================
 # MARKETS IMPORTED FROM config/markets.py
 # ============================================================================
-# 25 MARKETS TOTAL: 5 Categories x 5 Instruments
+# 27 MARKETS TOTAL: 5 Categories (FOREX: 7, others: 5 each)
 # FOREX, CRYPTO, INDEX, COMMODITY, STOCK_CFD
 # ============================================================================
-
-
-def status_text(robot_no: int, ok: bool) -> str:
-    """Generate status text for robot"""
-    return f"Robot {robot_no} {'✅' if ok else '❌'}"
 
 
 def convert_to_try(usd_price: float, usd_try_rate: float) -> float:
