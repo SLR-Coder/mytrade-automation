@@ -126,9 +126,13 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
             if attempt == 0:
                 try:
                     import asyncio
-                    asyncio.run(send_robot_progress(robot_name, "STARTED"))
-                except:
-                    pass
+                    coro = send_robot_progress(robot_name, "STARTED")
+                    asyncio.run(coro)
+                except Exception:
+                    try:
+                        coro.close()
+                    except:
+                        pass
 
             robot_module.run()
 
@@ -137,9 +141,13 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
             # Send completion notification
             try:
                 import asyncio
-                asyncio.run(send_robot_progress(robot_name, "COMPLETED"))
-            except:
-                pass
+                coro = send_robot_progress(robot_name, "COMPLETED")
+                asyncio.run(coro)
+            except Exception:
+                try:
+                    coro.close()
+                except:
+                    pass
 
             return True
 
@@ -149,9 +157,13 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
             # Send Telegram notification on error
             try:
                 import asyncio
-                asyncio.run(send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}"))
-            except:
-                pass
+                coro = send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}")
+                asyncio.run(coro)
+            except Exception:
+                try:
+                    coro.close()
+                except:
+                    pass
 
             # Retry logic
             if attempt < max_retries:

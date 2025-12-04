@@ -401,6 +401,10 @@ class GoldPriceClient:
 
     def __init__(self):
         self.session = requests.Session()
+        # Workaround for SSL SNI issues with metals.live
+        self.session.verify = False
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def get_gold_price(self) -> Dict[str, Any]:
         """
