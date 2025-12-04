@@ -458,9 +458,13 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
             return None
 
     def _parse_response(self, text: str) -> Optional[Dict]:
-        """AI yanıtını parse et"""
+        """AI yanıtını parse et - markdown ve plain text destekler"""
         try:
             import re
+
+            # Markdown formatting'i temizle (**text** -> text)
+            text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+            text = re.sub(r'\*([^*]+)\*', r'\1', text)
 
             lines = text.strip().split('\n')
 
@@ -470,9 +474,11 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
 
             for line in lines:
                 line = line.strip()
+                line_upper = line.upper()
 
-                if line.startswith("SIGNAL:"):
-                    signal_text = line.split("SIGNAL:")[1].strip().upper()
+                # SIGNAL parsing - multiple formats
+                if "SIGNAL:" in line_upper:
+                    signal_text = line.split(":", 1)[1].strip().upper()
                     if "BUY" in signal_text:
                         signal = "BUY"
                     elif "SELL" in signal_text:
@@ -480,15 +486,18 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
                     elif "HOLD" in signal_text:
                         signal = "HOLD"
 
-                elif line.startswith("CONFIDENCE:"):
-                    conf_text = line.split("CONFIDENCE:")[1].strip()
-                    match = re.search(r'\d+', conf_text)
+                # CONFIDENCE parsing - multiple formats
+                elif "CONFIDENCE:" in line_upper:
+                    conf_text = line.split(":", 1)[1].strip()
+                    # Handle both "85%" and "%85" formats
+                    match = re.search(r'(\d+)', conf_text)
                     if match:
-                        confidence = int(match.group())
+                        confidence = int(match.group(1))
 
-                elif line.startswith("REASONING:"):
-                    reasoning = line.split("REASONING:")[1].strip()
-                elif reasoning and line and not line.startswith(("SIGNAL:", "CONFIDENCE:")):
+                # REASONING parsing
+                elif "REASONING:" in line_upper:
+                    reasoning = line.split(":", 1)[1].strip()
+                elif reasoning and line and "SIGNAL" not in line_upper and "CONFIDENCE" not in line_upper:
                     reasoning += " " + line
 
             if not signal or confidence is None:
@@ -498,7 +507,7 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
             return {
                 "signal": signal,
                 "confidence": min(100, max(0, confidence)),
-                "reasoning": reasoning.strip()
+                "reasoning": reasoning.strip()[:500]  # Limit reasoning length
             }
 
         except Exception as e:
