@@ -104,14 +104,14 @@ def read_latest_signals(ws, cols) -> List[Dict]:
 
             # Parse indicators (corrected columns, handle Turkish decimal format)
             indicators = {}
-            if len(row) > cols.G - 1 and row[cols.G - 1]:  # RSI
+            if len(row) > cols.G - 1 and row[cols.G - 1]:  # RSI (G = 7)
                 indicators['rsi'] = parse_float(row[cols.G - 1])
-            if len(row) > cols.I - 1 and row[cols.I - 1]:  # Bollinger Upper
-                indicators['bb_upper'] = parse_float(row[cols.I - 1])
-            if len(row) > cols.J - 1 and row[cols.J - 1]:  # Bollinger Middle
-                indicators['bb_middle'] = parse_float(row[cols.J - 1])
-            if len(row) > cols.K - 1 and row[cols.K - 1]:  # Bollinger Lower
-                indicators['bb_lower'] = parse_float(row[cols.K - 1])
+            if len(row) > cols.K - 1 and row[cols.K - 1]:  # BB Upper (K = 11)
+                indicators['bb_upper'] = parse_float(row[cols.K - 1])
+            if len(row) > cols.L - 1 and row[cols.L - 1]:  # BB Middle (L = 12)
+                indicators['bb_middle'] = parse_float(row[cols.L - 1])
+            if len(row) > cols.M - 1 and row[cols.M - 1]:  # BB Lower (M = 13)
+                indicators['bb_lower'] = parse_float(row[cols.M - 1])
             if len(row) > cols.R - 1 and row[cols.R - 1]:  # Support
                 indicators['support'] = parse_float(row[cols.R - 1])
             if len(row) > cols.S - 1 and row[cols.S - 1]:  # Resistance
