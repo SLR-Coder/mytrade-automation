@@ -1,8 +1,18 @@
+# Git
 .git
 .gitignore
+
+# Documentation (not needed in production)
 README.md
+*.md
+docs/
+
+# Environment files (use Cloud Run env vars instead)
 .env
 .env.local
+.env.example
+
+# Python cache
 __pycache__
 *.pyc
 *.pyo
@@ -10,9 +20,26 @@ __pycache__
 .Python
 env/
 venv/
+
+# IDE
 .vscode/
 .idea/
+
+# Logs
 *.log
+
+# Media and temporary files
 media/
 tmp/
 .DS_Store
+
+# Archive folders (not needed in production)
+robots/archive/
+scripts/archive/
+
+# Tests (not needed in production)
+tests/
+test_*.py
+
+# Charts directory (generated at runtime)
+/tmp/charts

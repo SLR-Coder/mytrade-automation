@@ -1,0 +1,281 @@
+# Cloud Scheduler Configuration for MyTrade V2
+# Updated for Temporal Trend Analysis Architecture (30-minute batches)
+# All times in UTC (for Cloud Run compatibility)
+# Format: minute hour day month day-of-week
+
+# =============================================================================
+# NEW ARCHITECTURE (30-MINUTE TEMPORAL TREND ANALYSIS)
+# =============================================================================
+#
+# Data Flow:
+# 1. Robot 1 runs every 5 min → collects market data (no AI analysis)
+# 2. Every 30 min → Full analysis pipeline:
+#    - Robot 3: AI Signal Generator (5 AIs with 30-min temporal context)
+#    - Robot 8: Personal AI Analyst (Gemini 2.5 Pro with Jirad Fusion)
+#    - Robot 7: AI Command Center (meta-analysis + final decision)
+#    - Robot 4: Chart Generator (visual analysis)
+#    - Robot 6: Performance Tracker (update metrics)
+#    - Robot 5: Telegram Publisher (send signals with Entry/TP/SL)
+# 3. Robot 2 runs every 5 min → news monitoring (separate)
+# 4. Robot 9 runs every 3 min → TP/SL real-time tracking
+# 5. Robot 6 Weekly Report runs every Sunday → performance summary
+#
+# =============================================================================
+
+# =============================================================================
+# DATA COLLECTION (High Frequency)
+# =============================================================================
+
+# Robot 1: Market Data Collector
+# CRITICAL: This only collects data, NO AI analysis
+# Runs every 5 minutes to build 30-minute temporal dataset
+data_collection:
+  schedule: "*/5 * * * *"
+  timezone: "UTC"
+  description: "Robot 1: Collect market data every 5 minutes (no AI)"
+  script: "/app/scripts/run_data_collector.sh"
+  env_vars:
+    ROBOT: "1"
+    SKIP_AI_ANALYSIS: "true"
+    DATA_ONLY: "true"
+
+# Robot 2: News Monitor
+# Runs every 5 minutes for breaking news
+news_monitor:
+  schedule: "*/5 * * * *"
+  timezone: "UTC"
+  description: "Robot 2: Monitor crypto/forex news and send urgent alerts"
+  script: "/app/scripts/run_news_monitor.sh"
+  env_vars:
+    ROBOT: "2"
+    SEND_URGENT_ONLY: "true"
+
+# =============================================================================
+# 30-MINUTE ANALYSIS PIPELINE (Full AI Analysis)
+# =============================================================================
+
+# Analysis Pipeline: Robots 3 → 8 → 7 → 4 → 6 → 5
+# Runs every 30 minutes to analyze last 6 batches (30 minutes of data)
+# This is the main trading signal generation process
+analysis_pipeline:
+  schedule: "*/30 * * * *"
+  timezone: "UTC"
+  description: "Full 30-min analysis pipeline: AI signals + temporal trend + Telegram"
+  script: "/app/scripts/run_analysis_pipeline.sh"
+  env_vars:
+    ROBOT: "3,8,7,4,6,5"
+    TEMPORAL_ANALYSIS: "true"
+    BATCH_COUNT: "6"
+    MIN_CONFIDENCE: "60"
+
+# Alternative: You can also schedule at specific times (e.g., top and bottom of each hour)
+# analysis_pipeline_hourly:
+#   schedule: "0,30 * * * *"  # 00:00, 00:30, 01:00, 01:30, etc.
+#   timezone: "UTC"
+#   description: "30-min analysis at fixed times (top/bottom of hour)"
+#   script: "/app/scripts/run_analysis_pipeline.sh"
+
+# =============================================================================
+# REAL-TIME TP/SL MONITORING
+# =============================================================================
+
+# Robot 9: TP/SL Monitor
+# Runs every 3 minutes for real-time position tracking
+# Sends Telegram alerts when TP1, TP2, or SL is hit
+tp_sl_monitor:
+  schedule: "*/3 * * * *"
+  timezone: "UTC"
+  description: "Robot 9: Real-time TP/SL tracking and Telegram notifications"
+  script: "/app/scripts/run_tp_monitor.sh"
+  env_vars:
+    ROBOT: "9"
+    REAL_TIME_MONITORING: "true"
+
+# =============================================================================
+# WEEKLY PERFORMANCE REPORT
+# =============================================================================
+
+# Robot 6: Weekly Telegram Report
+# Runs every Sunday at 00:00 UTC (midnight)
+# Sends comprehensive weekly performance summary to Telegram
+weekly_report:
+  schedule: "0 0 * * 0"
+  timezone: "UTC"
+  description: "Robot 6: Weekly performance report to Telegram (every Sunday)"
+  script: "/app/scripts/run_weekly_report.sh"
+  env_vars:
+    ROBOT: "6"
+    REPORT_TYPE: "weekly"
+    REPORT_DAYS: "7"
+
+# Alternative: Friday evening report (Turkey time = UTC+3)
+# weekly_report_friday:
+#   schedule: "0 18 * * 5"  # Friday 18:00 UTC (21:00 Turkey)
+#   timezone: "UTC"
+#   description: "Robot 6: Weekly report on Friday evening"
+#   script: "/app/scripts/run_weekly_report.sh"
+
+# =============================================================================
+# HEALTH CHECK & MONITORING
+# =============================================================================
+
+# System Health Check
+# Runs every 10 minutes to monitor system health
+health_check:
+  schedule: "*/10 * * * *"
+  timezone: "UTC"
+  description: "System health check and monitoring"
+  script: "/app/scripts/health_check.sh"
+  env_vars:
+    SEND_ALERTS: "true"
+    CHECK_SHEETS_API: "true"
+    CHECK_TELEGRAM_BOT: "true"
+
+# =============================================================================
+# EXECUTION SUMMARY
+# =============================================================================
+#
+# Every 3 minutes:  Robot 9 (TP/SL Monitor)
+# Every 5 minutes:  Robot 1 (Data Collector), Robot 2 (News Monitor)
+# Every 10 minutes: Health Check
+# Every 30 minutes: Analysis Pipeline (Robots 3,8,7,4,6,5)
+# Every Sunday:     Robot 6 (Weekly Report)
+#
+# Example Timeline (30 minutes):
+# T=00:00 → Pipeline runs (3,8,7,4,6,5) - uses data from T-30 to T-00
+# T=00:03 → Robot 9
+# T=00:05 → Robot 1, Robot 2
+# T=00:06 → Robot 9
+# T=00:09 → Robot 9
+# T=00:10 → Robot 1, Robot 2, Health Check
+# T=00:12 → Robot 9
+# T=00:15 → Robot 1, Robot 2, Robot 9
+# T=00:18 → Robot 9
+# T=00:20 → Robot 1, Robot 2, Health Check
+# T=00:21 → Robot 9
+# T=00:24 → Robot 9
+# T=00:25 → Robot 1, Robot 2
+# T=00:27 → Robot 9
+# T=00:30 → Pipeline runs again (3,8,7,4,6,5) - uses data from T-00 to T-30
+#
+# =============================================================================
+
+# =============================================================================
+# DEPLOYMENT COMMANDS (Google Cloud Scheduler)
+# =============================================================================
+#
+# To deploy these schedules to Cloud Scheduler:
+#
+# 1. Install gcloud CLI:
+#    curl https://sdk.cloud.google.com | bash
+#    gcloud init
+#
+# 2. Set project:
+#    gcloud config set project YOUR_PROJECT_ID
+#
+# 3. Create each schedule:
+#
+#    # Data Collection (Robot 1)
+#    gcloud scheduler jobs create http data-collection \
+#      --schedule="*/5 * * * *" \
+#      --uri="https://YOUR_CLOUD_RUN_URL/run_script?script=run_data_collector.sh" \
+#      --http-method=POST \
+#      --time-zone="UTC" \
+#      --description="Robot 1: Data collection every 5 minutes"
+#
+#    # News Monitor (Robot 2)
+#    gcloud scheduler jobs create http news-monitor \
+#      --schedule="*/5 * * * *" \
+#      --uri="https://YOUR_CLOUD_RUN_URL/run_script?script=run_news_monitor.sh" \
+#      --http-method=POST \
+#      --time-zone="UTC" \
+#      --description="Robot 2: News monitoring every 5 minutes"
+#
+#    # Analysis Pipeline (Robots 3,8,7,4,6,5)
+#    gcloud scheduler jobs create http analysis-pipeline \
+#      --schedule="*/30 * * * *" \
+#      --uri="https://YOUR_CLOUD_RUN_URL/run_script?script=run_analysis_pipeline.sh" \
+#      --http-method=POST \
+#      --time-zone="UTC" \
+#      --description="Full 30-min analysis pipeline"
+#
+#    # TP/SL Monitor (Robot 9)
+#    gcloud scheduler jobs create http tp-sl-monitor \
+#      --schedule="*/3 * * * *" \
+#      --uri="https://YOUR_CLOUD_RUN_URL/run_script?script=run_tp_monitor.sh" \
+#      --http-method=POST \
+#      --time-zone="UTC" \
+#      --description="Robot 9: TP/SL real-time tracking"
+#
+#    # Weekly Report (Robot 6)
+#    gcloud scheduler jobs create http weekly-report \
+#      --schedule="0 0 * * 0" \
+#      --uri="https://YOUR_CLOUD_RUN_URL/run_script?script=run_weekly_report.sh" \
+#      --http-method=POST \
+#      --time-zone="UTC" \
+#      --description="Robot 6: Weekly Telegram report"
+#
+# 4. List all jobs:
+#    gcloud scheduler jobs list
+#
+# 5. Update a job:
+#    gcloud scheduler jobs update http JOB_NAME --schedule="NEW_SCHEDULE"
+#
+# 6. Delete a job:
+#    gcloud scheduler jobs delete JOB_NAME
+#
+# =============================================================================
+
+# =============================================================================
+# TESTING & VALIDATION
+# =============================================================================
+#
+# Before deploying to production, test each script locally:
+#
+# 1. Test Data Collection:
+#    bash scripts/run_data_collector.sh
+#
+# 2. Test News Monitor:
+#    bash scripts/run_news_monitor.sh
+#
+# 3. Test Analysis Pipeline:
+#    bash scripts/run_analysis_pipeline.sh
+#
+# 4. Test TP/SL Monitor:
+#    bash scripts/run_tp_monitor.sh
+#
+# 5. Test Weekly Report:
+#    bash scripts/run_weekly_report.sh
+#
+# Check logs for errors and verify Google Sheets is updated correctly.
+#
+# =============================================================================
+
+# =============================================================================
+# COST OPTIMIZATION NOTES
+# =============================================================================
+#
+# Cloud Scheduler pricing: $0.10 per job per month (first 3 jobs free)
+#
+# Total jobs: 5 (data_collection, news_monitor, analysis_pipeline,
+#                 tp_sl_monitor, weekly_report)
+#
+# Monthly cost: 5 jobs × $0.10 = $0.50 (2 jobs free = $0.30/month)
+#
+# Execution frequency per month:
+# - Data collection: 8,640 runs (every 5 min)
+# - News monitor: 8,640 runs (every 5 min)
+# - Analysis pipeline: 1,440 runs (every 30 min)
+# - TP/SL monitor: 14,400 runs (every 3 min)
+# - Weekly report: 4 runs (once per week)
+#
+# Total: ~33,000 scheduled executions per month
+#
+# Cloud Run pricing will depend on:
+# - CPU allocation (0.5-2 vCPU recommended)
+# - Memory allocation (1-2 GB recommended)
+# - Execution time per robot (1-60 seconds typically)
+#
+# Estimated Cloud Run cost: $5-20/month (depends on usage)
+#
+# =============================================================================

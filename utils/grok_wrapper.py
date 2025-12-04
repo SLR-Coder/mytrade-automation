@@ -45,7 +45,8 @@ class GrokClient:
             api_key=api_key,
             base_url="https://api.x.ai/v1"
         )
-        self.model = "grok-3-preview"  # Grok-3
+        self.model = "grok-2"  # Stable Grok-2 model (Nov 2025)
+        logger.info(f"Grok client initialized with model: {self.model}")
 
     def analyze_market(
         self,

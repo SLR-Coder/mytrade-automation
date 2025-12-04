@@ -14,6 +14,7 @@ from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.assistant_ai import create_personal_analyst
+from utils.common import get_latest_market_data, get_last_6_batches, status_text as common_status_text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-8-PersonalAIAnalyst")
@@ -21,115 +22,67 @@ logger = logging.getLogger("Robot-8-PersonalAIAnalyst")
 SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
 
 
-def status_text(robot_no: int, ok: bool) -> str:
-    """Generate status text for robot"""
-    return f"Robot {robot_no} {'✅' if ok else '❌'}"
+def analyze_temporal_trend(batches: List[Dict]) -> str:
+    """
+    Analyze temporal trend from 6 batches of data (same as Robot 3)
 
+    Args:
+        batches: List of batch data (oldest to newest)
 
-def parse_float(value):
-    """Parse float handling Turkish locale"""
-    if not value:
-        return None
-    return float(str(value).replace(",", "."))
+    Returns:
+        Human-readable trend summary string
+    """
+    if not batches or len(batches) < 2:
+        return "İlk veri - trend analizi yok"
 
+    prices = [b['price'] for b in batches if b.get('price', 0) > 0]
+    if len(prices) < 2:
+        return "Yetersiz fiyat verisi"
 
-def get_latest_market_data(ws, cols) -> List[Dict]:
-    """Read latest market data from Google Sheets"""
-    logger.info("Son piyasa verileri okunuyor...")
+    # Calculate price movement
+    start_price = prices[0]
+    end_price = prices[-1]
+    price_change_pct = ((end_price - start_price) / start_price) * 100
 
-    all_rows = ws.get_all_values()
-    if len(all_rows) <= 1:
-        return []
-
-    # Find last separator
-    separator_idx = None
-    for i in range(len(all_rows) - 1, 0, -1):
-        if len(all_rows[i]) > cols.AO - 1:
-            if all_rows[i][cols.AO - 1] == "Ayırıcı":
-                separator_idx = i
-                break
-
-    if separator_idx is None:
-        data_rows = all_rows[1:]
+    # Calculate momentum (last 3 vs first 3)
+    if len(prices) >= 6:
+        first_half_avg = sum(prices[:3]) / 3
+        second_half_avg = sum(prices[3:]) / 3
+        momentum = "GÜÇLÜ YUKARI" if second_half_avg > first_half_avg * 1.01 else \
+                   "GÜÇLÜ AŞAĞI" if second_half_avg < first_half_avg * 0.99 else "NÖTR"
     else:
-        data_rows = all_rows[separator_idx + 1:]
+        momentum = "YUKARI" if end_price > start_price else "AŞAĞI" if end_price < start_price else "NÖTR"
 
-    markets_data = []
-    for row in data_rows:
-        if len(row) < cols.B:
-            continue
+    # Count upward movements
+    up_count = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
+    consistency = f"{up_count}/{len(prices)-1}"
 
-        market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
-        if not market:
-            continue
-
-        try:
-            price_str = row[cols.C - 1] if len(row) > cols.C - 1 and row[cols.C - 1] else "0"
-            price = parse_float(price_str) or 0
-        except:
-            price = 0
-
-        # Parse indicators
-        indicators = {}
-        try:
-            if len(row) > cols.F - 1: indicators['rsi'] = parse_float(row[cols.F - 1])
-            if len(row) > cols.G - 1: indicators['macd'] = parse_float(row[cols.G - 1])
-            if len(row) > cols.H - 1: indicators['macd_signal'] = parse_float(row[cols.H - 1])
-            if len(row) > cols.I - 1: indicators['macd_histogram'] = parse_float(row[cols.I - 1])
-            if len(row) > cols.J - 1: indicators['bb_upper'] = parse_float(row[cols.J - 1])
-            if len(row) > cols.K - 1: indicators['bb_middle'] = parse_float(row[cols.K - 1])
-            if len(row) > cols.L - 1: indicators['bb_lower'] = parse_float(row[cols.L - 1])
-            if len(row) > cols.M - 1: indicators['ema_9'] = parse_float(row[cols.M - 1])
-            if len(row) > cols.N - 1: indicators['ema_21'] = parse_float(row[cols.N - 1])
-            if len(row) > cols.O - 1: indicators['ema_50'] = parse_float(row[cols.O - 1])
-            if len(row) > cols.P - 1: indicators['ema_200'] = parse_float(row[cols.P - 1])
-            if len(row) > cols.S - 1: indicators['trend'] = row[cols.S - 1]
-
-            support_levels = []
-            resistance_levels = []
-            if len(row) > cols.Q - 1 and row[cols.Q - 1]:
-                val = parse_float(row[cols.Q - 1])
-                if val: support_levels.append(val)
-            if len(row) > cols.R - 1 and row[cols.R - 1]:
-                val = parse_float(row[cols.R - 1])
-                if val: resistance_levels.append(val)
-
-            indicators['support_levels'] = support_levels
-            indicators['resistance_levels'] = resistance_levels
-        except Exception as e:
-            logger.warning(f"Indicator parse hatasi {market}: {e}")
-
-        markets_data.append({
-            "market": market,
-            "price": price,
-            "indicators": indicators,
-            "row_index": all_rows.index(row) + 1
-        })
-
-    logger.info(f"{len(markets_data)} piyasa verisi okundu")
-    return markets_data
+    summary = f"Son 30 dk: Fiyat {price_change_pct:+.2f}%, Momentum: {momentum}, Tutarlılık: {consistency} yukarı"
+    return summary
 
 
 def run():
     """Main execution function for Robot 8"""
     logger.info("=" * 80)
-    logger.info("ROBOT 8: PERSONAL AI ANALYST (GEMINI 2.5 PRO) - BASLAT")
+    logger.info("ROBOT 8: PERSONAL AI ANALYST (TEMPORAL TREND ANALİZİ) - BAŞLAT")
     logger.info("=" * 80)
 
     try:
-        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
         gc = get_gspread_client()
         ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
         cols = resolve_columns(ws)
 
+        # Read latest market data (for current prices and row indices)
         markets_data = get_latest_market_data(ws, cols)
         if not markets_data:
-            logger.warning("Analiz edilecek piyasa yok")
+            logger.warning("⚠️ Analiz edilecek piyasa yok")
             return
 
+        # Read temporal data (last 6 batches for trend analysis)
+        temporal_data = get_last_6_batches(ws, cols)
+
         # Robot 8: ALWAYS uses Gemini 2.5 Pro with user's custom prompt
-        # Fixed: ai_model = "gemini"
-        # Custom prompt from environment variable
         ai_model = "gemini"  # FIXED: Always Gemini
         custom_prompt = os.getenv("PERSONAL_AI_CUSTOM_PROMPT", None)
 
@@ -138,12 +91,12 @@ def run():
             custom_prompt=custom_prompt
         )
 
-        logger.info(f"\n{len(markets_data)} piyasa icin kisisel AI analizi basliyor...")
-        logger.info(f"  AI Model: GEMINI 2.5 PRO (Fixed)")
+        logger.info(f"\n🎯 {len(markets_data)} piyasa için TEMPORAL TREND analizi başlıyor...")
+        logger.info(f"  AI Model: GEMINI 2.5 PRO (Jirad Fusion)")
         if custom_prompt:
             logger.info(f"  Custom Prompt: {custom_prompt[:100]}...")
         else:
-            logger.info(f"  Using default Jirad-style prompt")
+            logger.info(f"  Using default Jirad Fusion Multi-Engine prompt")
 
         processed = 0
         for market_data in markets_data:
@@ -152,27 +105,46 @@ def run():
             indicators = market_data["indicators"]
             row_index = market_data["row_index"]
 
+            # Status kontrolü - Robot 8 zaten işlenmişse atla (BB sütunu)
+            try:
+                current_status = ws.cell(row_index, cols.BB).value or ""
+                if "Robot 8" in current_status and "✅" in current_status:
+                    logger.info(f"⏭️  {market} zaten işlenmiş (Robot 8 ✅), atlanıyor...")
+                    continue
+            except:
+                pass  # Status okunamazsa devam et
+
+            # Analyze temporal trend (last 30 minutes)
+            temporal_summary = "İlk analiz - henüz geçmiş veri yok"
+            if market in temporal_data and temporal_data[market]:
+                temporal_summary = analyze_temporal_trend(temporal_data[market])
+                logger.info(f"  📈 {temporal_summary}")
+
+            # Add temporal summary to indicators (Personal AI will see this)
+            indicators_with_trend = indicators.copy()
+            indicators_with_trend['temporal_summary'] = temporal_summary
+
             logger.info(f"\n{'='*60}")
-            logger.info(f"{market} @ ${price:,.2f}")
+            logger.info(f"📊 {market} @ ${price:,.2f}")
             logger.info(f"{'='*60}")
 
-            # Get personal AI analysis
-            analysis = analyst.analyze(market, price, indicators)
+            # Get personal AI analysis with temporal context
+            analysis = analyst.analyze(market, price, indicators_with_trend)
 
             if not analysis:
                 logger.warning(f"  Kisisel AI analizi basarisiz: {market}")
                 continue
 
-            # Write to Google Sheets (AD-AE columns)
+            # Write to Google Sheets (U-V columns: Asistan AI Sinyal + Analiz)
             try:
-                # AD: Signal + Confidence
-                ws.update_cell(row_index, cols.AD, f"{analysis['signal']} ({analysis['confidence']}%)")
+                # U: Signal + Confidence (Asistan AI Sinyal)
+                ws.update_cell(row_index, cols.U, f"{analysis['signal']} ({analysis['confidence']}%)")
 
-                # AE: Detailed reasoning
-                ws.update_cell(row_index, cols.AE, analysis['reasoning'][:500])  # Truncate to 500 chars
+                # V: Detailed reasoning (Asistan AI Analizi)
+                ws.update_cell(row_index, cols.V, analysis['reasoning'][:500])  # Truncate to 500 chars
 
-                # Update status
-                ws.update_cell(row_index, cols.AO, status_text(8, True))
+                # Update status (Robot 8: BB sütunu)
+                ws.update_cell(row_index, cols.BB, common_status_text(8, True))
 
                 processed += 1
                 logger.info(f"  {analysis['signal']} ({analysis['confidence']}%)")

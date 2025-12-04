@@ -87,42 +87,41 @@ class HealthChecker:
         return self.results
 
     async def check_database(self) -> HealthStatus:
-        """Check database connectivity"""
+        """Check database connectivity (DISABLED - using Google Sheets only)"""
         component = "Database"
         start_time = datetime.now()
 
-        try:
-            from core.database import get_db_session
+        # Database check disabled - using Google Sheets for production
+        logger.info(f"⊘ {component}: SKIPPED (not using database in production)")
+        return HealthStatus(
+            component=component,
+            status="SKIPPED",
+            response_time=0.0,
+            timestamp=datetime.now(),
+            message="Database not used in production (Google Sheets only)"
+        )
 
-            async with get_db_session() as session:
-                # Simple query to test connection
-                result = await session.execute("SELECT 1")
-                row = result.fetchone()
-
-                if row and row[0] == 1:
-                    response_time = (datetime.now() - start_time).total_seconds()
-                    logger.info(f"✓ {component}: HEALTHY ({response_time:.2f}s)")
-
-                    return HealthStatus(
-                        component=component,
-                        status="HEALTHY",
-                        response_time=response_time,
-                        timestamp=datetime.now()
-                    )
-                else:
-                    raise Exception("Query returned unexpected result")
-
-        except Exception as e:
-            response_time = (datetime.now() - start_time).total_seconds()
-            logger.error(f"✗ {component}: CRITICAL - {e}")
-
-            return HealthStatus(
-                component=component,
-                status="CRITICAL",
-                response_time=response_time,
-                error_message=str(e),
-                timestamp=datetime.now()
-            )
+        # Original database check code (commented out)
+        # try:
+        #     from core.database import get_db_session
+        #     async with get_db_session() as session:
+        #         result = await session.execute("SELECT 1")
+        #         row = result.fetchone()
+        #         if row and row[0] == 1:
+        #             response_time = (datetime.now() - start_time).total_seconds()
+        #             return HealthStatus(...)
+        #         else:
+        #             raise Exception("Query returned unexpected result")
+        # except Exception as e:
+        #     response_time = (datetime.now() - start_time).total_seconds()
+        #     logger.error(f"✗ {component}: CRITICAL - {e}")
+        #     return HealthStatus(
+        #         component=component,
+        #         status="CRITICAL",
+        #         response_time=response_time,
+        #         error_message=str(e),
+        #         timestamp=datetime.now()
+        #     )
 
     async def check_google_sheets(self) -> HealthStatus:
         """Check Google Sheets API connectivity"""

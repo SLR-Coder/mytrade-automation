@@ -13,12 +13,31 @@ from datetime import datetime, timedelta
 import requests
 import google.generativeai as genai
 
-from core.models import NewsItem
-from core.database import get_db_session
-from data.models.news import NewsModel
+# Database imports removed - using Google Sheets only for production
+# from core.models import NewsItem
+# from core.database import get_db_session
+# from data.models.news import NewsModel
+from dataclasses import dataclass
+from typing import Optional as OptionalType
+
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
+
+
+@dataclass
+class NewsItem:
+    """News item data structure (replaced database model)"""
+    published_at: str
+    title: str
+    summary: str
+    turkish_summary: str
+    source: str
+    url: str
+    sentiment_score: float
+    sentiment_label: str
+    impact: str
+    related_markets: str
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-2-NewsAnalyzer")
@@ -294,30 +313,17 @@ async def run():
                     logger.error(f"Failed to process article: {e}")
                     continue
 
-        # Save to database
-        if all_news_items:
-            async with get_db_session() as session:
-                for news_item in all_news_items:
-                    news_model = NewsModel(
-                        fetched_at=datetime.utcnow(),
-                        published_at=news_item.published_at,
-                        title=news_item.title,
-                        summary=news_item.summary,
-                        turkish_summary=news_item.turkish_summary,
-                        source=news_item.source,
-                        url=news_item.url,
-                        sentiment_score=news_item.sentiment_score,
-                        sentiment_label=news_item.sentiment_label,
-                        impact=news_item.impact,
-                        related_markets=news_item.related_markets
-                    )
-                    session.add(news_model)
-
-            logger.info(f"\n✓ Saved {len(all_news_items)} news items to database (with Turkish summaries)")
+        # Database save removed - using Google Sheets only for production
+        # if all_news_items:
+        #     async with get_db_session() as session:
+        #         for news_item in all_news_items:
+        #             news_model = NewsModel(...)
+        #             session.add(news_model)
+        #     logger.info(f"\n✓ Saved {len(all_news_items)} news items to database")
 
         # Update Google Sheets (write top news to a summary column)
         try:
-            sheet_id = get_secret("GOOGLE_SHEET_ID")
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
             gc = get_gspread_client()
             ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
 
@@ -350,14 +356,14 @@ async def run():
 
 
 if __name__ == "__main__":
-    # Initialize database first
-    from core.database import init_database, close_database
+    # Database initialization removed - using Google Sheets only
+    # from core.database import init_database, close_database
 
     async def main():
-        await init_database()
+        # await init_database()  # Removed - no database in production
         try:
             await run()
         finally:
-            await close_database()
+            pass  # await close_database()  # Removed - no database in production
 
     asyncio.run(main())

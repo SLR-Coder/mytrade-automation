@@ -75,46 +75,53 @@ def read_ai_signals(row: List[str], cols) -> List[Dict]:
     """
     ai_signals = []
 
-    # Robot 3: 4 AI (V-AC)
-    # DeepSeek (V-W)
-    if len(row) > cols.V - 1 and row[cols.V - 1]:
-        signal_data = parse_ai_column(row[cols.V - 1], "DeepSeek-V3")
+    # Robot 8: Personal AI (U-V)
+    if len(row) > cols.U - 1 and row[cols.U - 1]:
+        signal_data = parse_ai_column(row[cols.U - 1], "Personal-AI-Gemini")
         if signal_data:
-            # Add reasoning if available
-            if len(row) > cols.W - 1 and row[cols.W - 1]:
-                signal_data["reasoning"] = row[cols.W - 1]
+            if len(row) > cols.V - 1 and row[cols.V - 1]:
+                signal_data["reasoning"] = row[cols.V - 1]
             ai_signals.append(signal_data)
 
-    # Claude (X-Y)
-    if len(row) > cols.X - 1 and row[cols.X - 1]:
-        signal_data = parse_ai_column(row[cols.X - 1], "Claude-Sonnet-4")
+    # Robot 3 AI'ları:
+    # GPT-4 (W-X)
+    if len(row) > cols.W - 1 and row[cols.W - 1]:
+        signal_data = parse_ai_column(row[cols.W - 1], "GPT-4o")
         if signal_data:
-            if len(row) > cols.Y - 1 and row[cols.Y - 1]:
-                signal_data["reasoning"] = row[cols.Y - 1]
+            if len(row) > cols.X - 1 and row[cols.X - 1]:
+                signal_data["reasoning"] = row[cols.X - 1]
             ai_signals.append(signal_data)
 
-    # GPT-4 (Z-AA)
-    if len(row) > cols.Z - 1 and row[cols.Z - 1]:
-        signal_data = parse_ai_column(row[cols.Z - 1], "GPT-4")
+    # Claude (Y-Z)
+    if len(row) > cols.Y - 1 and row[cols.Y - 1]:
+        signal_data = parse_ai_column(row[cols.Y - 1], "Claude-Sonnet-4")
         if signal_data:
-            if len(row) > cols.AA - 1 and row[cols.AA - 1]:
-                signal_data["reasoning"] = row[cols.AA - 1]
+            if len(row) > cols.Z - 1 and row[cols.Z - 1]:
+                signal_data["reasoning"] = row[cols.Z - 1]
             ai_signals.append(signal_data)
 
-    # Grok (AB-AC)
-    if len(row) > cols.AB - 1 and row[cols.AB - 1]:
-        signal_data = parse_ai_column(row[cols.AB - 1], "Grok-3")
+    # Gemini (AA-AB)
+    if len(row) > cols.AA - 1 and row[cols.AA - 1]:
+        signal_data = parse_ai_column(row[cols.AA - 1], "Gemini-2.0-Flash")
         if signal_data:
-            if len(row) > cols.AC - 1 and row[cols.AC - 1]:
-                signal_data["reasoning"] = row[cols.AC - 1]
+            if len(row) > cols.AB - 1 and row[cols.AB - 1]:
+                signal_data["reasoning"] = row[cols.AB - 1]
             ai_signals.append(signal_data)
 
-    # Robot 8: Personal AI (AD-AE)
-    if len(row) > cols.AD - 1 and row[cols.AD - 1]:
-        signal_data = parse_ai_column(row[cols.AD - 1], "Personal-AI")
+    # Grok (AC-AD)
+    if len(row) > cols.AC - 1 and row[cols.AC - 1]:
+        signal_data = parse_ai_column(row[cols.AC - 1], "Grok-2")
         if signal_data:
-            if len(row) > cols.AE - 1 and row[cols.AE - 1]:
-                signal_data["reasoning"] = row[cols.AE - 1]
+            if len(row) > cols.AD - 1 and row[cols.AD - 1]:
+                signal_data["reasoning"] = row[cols.AD - 1]
+            ai_signals.append(signal_data)
+
+    # DeepSeek (AE-AF)
+    if len(row) > cols.AE - 1 and row[cols.AE - 1]:
+        signal_data = parse_ai_column(row[cols.AE - 1], "DeepSeek-V3")
+        if signal_data:
+            if len(row) > cols.AF - 1 and row[cols.AF - 1]:
+                signal_data["reasoning"] = row[cols.AF - 1]
             ai_signals.append(signal_data)
 
     logger.info(f"  📊 {len(ai_signals)} AI sinyali okundu (Robot 3 + Robot 8)")
@@ -129,7 +136,7 @@ def run():
 
     try:
         # Get secrets
-        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
 
         # Get Google Sheets client
         gc = get_gspread_client()
@@ -145,11 +152,12 @@ def run():
             logger.warning("⚠️ Sheet'te veri yok")
             return
 
-        # Find last separator
+        # Find last separator (Robot 1 creates separator with "📊 VERİ TOPLAMA RAPORU" in column B)
         separator_idx = None
         for i in range(len(all_rows) - 1, 0, -1):
-            if len(all_rows[i]) > cols.AO - 1:
-                if all_rows[i][cols.AO - 1] == "Ayırıcı":
+            if len(all_rows[i]) > cols.B - 1:
+                market_value = all_rows[i][cols.B - 1]
+                if market_value and ("📊" in market_value or "RAPORU" in market_value):
                     separator_idx = i
                     break
 
@@ -183,6 +191,15 @@ def run():
             except:
                 price = 0
 
+            # Status kontrolü - Robot 7 zaten işlenmişse atla (BA sütunu)
+            try:
+                current_status = ws.cell(row_index, cols.BA).value or ""
+                if "Robot 7" in current_status and "✅" in current_status:
+                    logger.info(f"⏭️  {market} zaten işlenmiş (Robot 7 ✅), atlanıyor...")
+                    continue
+            except:
+                pass  # Status okunamazsa devam et
+
             logger.info(f"\n{'='*60}")
             logger.info(f"📊 {market} @ ${price:,.2f} (Satır {row_index})")
             logger.info(f"{'='*60}")
@@ -210,26 +227,34 @@ def run():
             final_decision = command_center.make_decision(market, price, ai_signals, assistant_rec)
             logger.info(f"  🎯 NİHAİ KARAR: {final_decision['final_signal']} (%{final_decision['final_confidence']})")
             logger.info(f"  📊 Consensus: %{final_decision['consensus_score']}")
-            logger.info(f"  📝 Gerekçe: {final_decision['reasoning'][:100]}...")
+            logger.info(f"  ⚠️  Risk: {final_decision.get('risk_level', 'MEDIUM')}")
+            logger.info(f"  🎬 Aksiyon: {final_decision.get('suggested_action', 'SET ALERT')}")
+            logger.info(f"  📝 Gerekçe: {final_decision['reasoning'][:150]}...")
 
-            # Step 4: Write to Google Sheets (AF-AI columns)
+            # Step 4: Write to Google Sheets (AG-AL columns: Robot 7 Komuta Merkezi)
             try:
-                logger.info(f"\n💾 Komuta Merkezi kararı yazılıyor (AF-AI)...")
+                logger.info(f"\n💾 Komuta Merkezi kararı yazılıyor (AG-AL)...")
 
-                # AF: Final Signal
-                ws.update_cell(row_index, cols.AF, final_decision['final_signal'])
+                # AG: KM Nihai Sinyal (BUY/SELL/HOLD)
+                ws.update_cell(row_index, cols.AG, final_decision['final_signal'])
 
-                # AG: Confidence %
-                ws.update_cell(row_index, cols.AG, f"%{final_decision['final_confidence']}")
+                # AH: KM Güven %
+                ws.update_cell(row_index, cols.AH, f"%{final_decision['final_confidence']}")
 
-                # AH: Meta-Analysis (reasoning)
-                ws.update_cell(row_index, cols.AH, final_decision['reasoning'][:500])  # Truncate
+                # AI: KM Meta-Analiz (Detaylı açıklama)
+                ws.update_cell(row_index, cols.AI, final_decision['reasoning'][:500])  # Truncate
 
-                # AI: Consensus %
-                ws.update_cell(row_index, cols.AI, f"%{final_decision['consensus_score']}")
+                # AJ: KM Consensus %
+                ws.update_cell(row_index, cols.AJ, f"%{final_decision['consensus_score']}")
 
-                # Update Robot 7 status
-                ws.update_cell(row_index, cols.AO, status_text(7, True))
+                # AK: KM Risk Level (LOW/MEDIUM/HIGH)
+                ws.update_cell(row_index, cols.AK, final_decision.get('risk_level', 'MEDIUM'))
+
+                # AL: KM Önerilen Aksiyon (ENTER NOW/WAIT/AVOID/etc.)
+                ws.update_cell(row_index, cols.AL, final_decision.get('suggested_action', 'SET ALERT'))
+
+                # Update Robot 7 status (BA sütunu)
+                ws.update_cell(row_index, cols.BA, status_text(7, True))
 
                 processed += 1
                 logger.info(f"  ✅ Satır {row_index} güncellendi")

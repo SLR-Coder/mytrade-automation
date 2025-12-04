@@ -80,7 +80,7 @@ class CommandCenter:
             # Claude'dan nihai karar al
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1000,
+                max_tokens=2000,  # Increased for detailed reasoning
                 temperature=0.1,  # Çok düşük = tutarlı kararlar
                 messages=[{
                     "role": "user",
@@ -89,13 +89,17 @@ class CommandCenter:
             )
 
             content = response.content[0].text
+
+            # DEBUG: Log raw response
+            logger.info(f"\n{'='*60}\nCLAUDE RAW RESPONSE:\n{content}\n{'='*60}\n")
+
             result = self._parse_meta_response(content, stats)
 
             logger.info(f"Command Center decision for {market}: {result['final_signal']} ({result['final_confidence']}%)")
             return result
 
         except Exception as e:
-            logger.error(f"Command Center failed: {e}")
+            logger.error(f"Command Center failed: {e}", exc_info=True)
             # Fallback: Majority voting
             return self._fallback_decision(ai_signals, stats)
 
@@ -153,7 +157,11 @@ class CommandCenter:
         signals_text = f"\n**{market} için AI Analizleri:**\n\n"
         for i, sig in enumerate(ai_signals, 1):
             signals_text += f"{i}. **{sig['ai_model']}**: {sig['signal']} (%{sig['confidence']} güven)\n"
-            signals_text += f"   Gerekçe: {sig['reasoning'][:200]}...\n\n"
+            reasoning = sig.get('reasoning', 'Açıklama yok')
+            if reasoning and len(reasoning) > 200:
+                signals_text += f"   Gerekçe: {reasoning[:200]}...\n\n"
+            else:
+                signals_text += f"   Gerekçe: {reasoning}\n\n"
 
         # İstatistikler
         stats_text = f"""
@@ -173,10 +181,10 @@ class CommandCenter:
 - Gerekçe: {assistant_rec['reasoning']}
 """
 
-        prompt = f"""Sen AI Komuta Merkezi'sin. Görevin: Tüm AI analizlerini değerlendirip nihai karar vermek.
+        prompt = f"""Sen dünya çapında deneyimli bir **Head Trader** ve **AI Komuta Merkezi** liderisin. 15+ yıl forex, crypto ve commodities piyasalarında trading yaptın. Görevin: 6 farklı AI'dan gelen analizleri profesyonelce değerlendirip institutinal-grade nihai karar vermek.
 
-**Piyasa:** {market}
-**Mevcut Fiyat:** ${price:,.2f}
+**📊 PİYASA:** {market}
+**💵 MEVCUT FİYAT:** ${price:,.2f}
 
 {signals_text}
 
@@ -184,53 +192,125 @@ class CommandCenter:
 
 {assistant_text}
 
-**Senin Görevin (Meta-Analiz):**
+**🎯 SENIN GÖREVIN (PROFESSIONAL META-ANALİZ):**
 
-1. **Conflict Analysis:** AI'lar arasında çelişki var mı? Neden farklı düşünüyorlar?
-2. **Strength Evaluation:** Hangi AI'ın analizi daha güçlü? Matematiksel mi, fundamental mı, sentiment mi?
-3. **Consensus Weighting:** Çoğunluğa mı uyalım yoksa azınlıktaki güçlü argümana mı?
-4. **Assistant Override:** Asistan AI'ın reddini dikkate al (önemli!)
-5. **Final Decision:** Tüm bunları birleştirip nihai kararı ver
+**1. AI Consensus Evaluation (Konsensüs Analizi)**
+   - Her AI'ın signal + confidence + reasoning'ini değerlendir
+   - Hangi AI'ların analizleri daha güçlü? (teknik analiz, momentum, risk-reward açısından)
+   - Conflict varsa: Neden farklı düşünüyorlar? Hangisi daha mantıklı?
 
-**KRITIK KURALLAR:**
-- Eğer Asistan AI reddettiyse (`approved: False`), çok güçlü bir sebep olmadıkça HOLD de
-- Consensus %60'ın altındaysa dikkatli ol
-- Çelişki varsa neden olduğunu açıkla
-- Confidence weighting: Yüksek confidence'a daha fazla ağırlık ver
+**2. Strength Weighting (Güç Ağırlıklandırması)**
+   - Yüksek confidence'lı AI'lara daha fazla ağırlık ver
+   - Reasoning quality: Hangi AI daha detaylı ve mantıklı analiz yapmış?
+   - Consensus ratio: %60+ consensus = güçlü sinyal, <%60 = zayıf/dikkatli ol
 
-Kararını TAM OLARAK şu formatta ver:
+**3. Assistant AI Override Check (Asistan Kontrolü)**
+   - Eğer Asistan AI reddettiyse (`approved: False`) → Bu ÇOK ÖNEMLİ!
+   - Asistan kullanıcının risk profili, strateji ve veto listesini temsil eder
+   - Asistan ret → HOLD de (çok çok güçlü sebep olmadıkça)
+
+**4. Risk Assessment (Risk Değerlendirmesi)**
+   - **LOW RISK:** %80+ consensus, assistant approved, low volatility, clear trend
+   - **MEDIUM RISK:** %60-79 consensus, minor conflicts, moderate volatility
+   - **HIGH RISK:** <%60 consensus, major conflicts, assistant rejected, high volatility, choppy market
+
+**5. Actionable Decision (İşlem Önerisi)**
+   - **ENTER NOW:** Güçlü consensus (%75+), assistant approved, clear setup
+   - **WAIT FOR PULLBACK:** Good signal but price extended, wait for better entry
+   - **SET ALERT:** Potential setup forming, monitor closely
+   - **AVOID:** Weak consensus, conflicts, assistant rejected, choppy/ranging
+
+**🚨 KRITIK KURALLAR:**
+✓ Asistan AI reddettiyse (`approved: False`) → 90% durumda HOLD de
+✓ Consensus %60 altı → HOLD veya dikkatli MEDIUM RISK
+✓ BUY vs SELL conflict → HOLD (çok güçlü sebep olmadıkça)
+✓ Confidence weighting: %85+ AI > %70 AI > %50 AI
+✓ Quality over quantity: 2 güçlü AI > 4 zayıf AI
+✓ Institutional mindset: Capital preservation > Profit hunting
+
+**📋 CEVAP FORMATI (TAM OLARAK ŞU FORMATTA VER):**
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
 CONSENSUS: [0-100]
-REASONING: [Detaylı meta-analiz - hangi AI'lara neden ağırlık verdin, çelişkileri nasıl çözdün, asistan önerisini neden dikkate aldın/almadın - TÜRKÇE, 3-5 cümle]
+RISK: [LOW/MEDIUM/HIGH]
+ACTION: [ENTER NOW/WAIT FOR PULLBACK/SET ALERT/AVOID]
+REASONING: [Profesyonel meta-analiz - Hangi AI'lara neden ağırlık verdin? Çelişkiler nasıl çözüldü? Asistan önerisi neden önemli? Risk neden bu seviyede? Önerilen aksiyon neden bu? - TÜRKÇE, 4-6 cümle, institutional trader dili]
+
+**ÖNEMLİ:** Reasoning çok detaylı olsun çünkü bu analiz ileride kullanılacak ve trade kararları bu rapora göre alınacak!
 """
         return prompt
 
     def _parse_meta_response(self, content: str, stats: Dict) -> Dict:
-        """Komuta merkezi yanıtını parse et"""
-        lines = content.strip().split('\n')
+        """Komuta merkezi yanıtını parse et - ROBUST version"""
+        import re
 
         final_signal = stats["majority_signal"]  # Default: majority
         final_confidence = int(stats["avg_confidence"])
         consensus_score = int(stats["consensus_ratio"] * 100)
-        reasoning = "Meta-analiz yanıtı ayrıştırılamadı"
+        risk_level = "MEDIUM"  # Default
+        suggested_action = "SET ALERT"  # Default
+        reasoning = ""
 
-        for line in lines:
-            line = line.strip()
-            if line.startswith("SIGNAL:"):
-                final_signal = line.split(":", 1)[1].strip().upper()
-            elif line.startswith("CONFIDENCE:"):
-                try:
-                    final_confidence = int(line.split(":", 1)[1].strip().split()[0])
-                except:
-                    pass
-            elif line.startswith("CONSENSUS:"):
-                try:
-                    consensus_score = int(line.split(":", 1)[1].strip().split()[0])
-                except:
-                    pass
-            elif line.startswith("REASONING:"):
-                reasoning = line.split(":", 1)[1].strip()
+        # Method 1: Try regex-based extraction (more flexible)
+        signal_match = re.search(r'SIGNAL:\s*([A-Z]+)', content, re.IGNORECASE)
+        if signal_match:
+            final_signal = signal_match.group(1).upper()
+
+        confidence_match = re.search(r'CONFIDENCE:\s*(\d+)', content, re.IGNORECASE)
+        if confidence_match:
+            final_confidence = int(confidence_match.group(1))
+
+        consensus_match = re.search(r'CONSENSUS:\s*(\d+)', content, re.IGNORECASE)
+        if consensus_match:
+            consensus_score = int(consensus_match.group(1))
+
+        risk_match = re.search(r'RISK:\s*([A-Z]+)', content, re.IGNORECASE)
+        if risk_match:
+            risk_level = risk_match.group(1).upper()
+
+        action_match = re.search(r'ACTION:\s*([A-Z\s]+?)(?:\n|$)', content, re.IGNORECASE)
+        if action_match:
+            suggested_action = action_match.group(1).strip().upper()
+
+        # Method 2: Extract reasoning (everything after REASONING: until end or next field)
+        reasoning_match = re.search(r'REASONING:\s*(.+?)(?:\n\n|\Z)', content, re.IGNORECASE | re.DOTALL)
+        if reasoning_match:
+            reasoning = reasoning_match.group(1).strip()
+            # Clean up reasoning - remove extra whitespace
+            reasoning = ' '.join(reasoning.split())
+
+        # Fallback: If still no reasoning, try line-by-line
+        if not reasoning:
+            lines = content.strip().split('\n')
+            reasoning_started = False
+            reasoning_lines = []
+
+            for line in lines:
+                line = line.strip()
+                if line.startswith("REASONING:"):
+                    reasoning_started = True
+                    rest = line.split(":", 1)[1].strip()
+                    if rest:
+                        reasoning_lines.append(rest)
+                elif reasoning_started and line:
+                    # Stop if we hit another field
+                    if line.startswith(("SIGNAL:", "CONFIDENCE:", "CONSENSUS:", "RISK:", "ACTION:")):
+                        break
+                    reasoning_lines.append(line)
+
+            if reasoning_lines:
+                reasoning = " ".join(reasoning_lines)
+
+        # Final fallback
+        if not reasoning or reasoning == "":
+            reasoning = "Meta-analiz tamamlandı ancak detaylı açıklama parse edilemedi. Karar: " + \
+                       f"{final_signal} (%{final_confidence} güven, %{consensus_score} consensus)"
+            logger.warning(f"⚠️  REASONING parse failed, using fallback")
+
+        # Log parsed values
+        logger.info(f"✓ Parsed - Signal: {final_signal}, Conf: {final_confidence}%, " +
+                   f"Consensus: {consensus_score}%, Risk: {risk_level}, Action: {suggested_action}")
+        logger.info(f"✓ Reasoning length: {len(reasoning)} chars")
 
         # Override detection
         command_center_override = (final_signal != stats["majority_signal"])
@@ -240,20 +320,40 @@ REASONING: [Detaylı meta-analiz - hangi AI'lara neden ağırlık verdin, çeli�
             "final_confidence": final_confidence,
             "reasoning": reasoning,
             "consensus_score": consensus_score,
+            "risk_level": risk_level,
+            "suggested_action": suggested_action,
             "conflicts": stats["conflicts"],
             "command_center_override": command_center_override,
-            "ai_model": "Command-Center-Claude-4.5"
+            "ai_model": "Command-Center-Claude-Sonnet-4.5"
         }
 
     def _fallback_decision(self, ai_signals: List[Dict], stats: Dict) -> Dict:
         """Fallback: Basit majority voting"""
         logger.warning("Using fallback decision (majority voting)")
 
+        # Auto-calculate risk based on consensus
+        if stats["consensus_ratio"] >= 0.8:
+            risk_level = "LOW"
+        elif stats["consensus_ratio"] >= 0.6:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "HIGH"
+
+        # Auto-calculate action
+        if stats["majority_signal"] == "HOLD" or risk_level == "HIGH":
+            suggested_action = "AVOID"
+        elif risk_level == "LOW":
+            suggested_action = "ENTER NOW"
+        else:
+            suggested_action = "SET ALERT"
+
         return {
             "final_signal": stats["majority_signal"],
             "final_confidence": int(stats["avg_confidence"]),
-            "reasoning": f"Fallback: Majority voting kullanıldı. {stats['buy_count']}B/{stats['sell_count']}S/{stats['hold_count']}H",
+            "reasoning": f"Fallback: Majority voting kullanıldı. {stats['buy_count']}B/{stats['sell_count']}S/{stats['hold_count']}H. Consensus %{stats['consensus_ratio']*100:.0f}",
             "consensus_score": int(stats["consensus_ratio"] * 100),
+            "risk_level": risk_level,
+            "suggested_action": suggested_action,
             "conflicts": stats["conflicts"],
             "command_center_override": False,
             "ai_model": "Fallback-MajorityVoting"

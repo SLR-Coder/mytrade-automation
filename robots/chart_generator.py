@@ -33,6 +33,18 @@ def status_text(robot_no: int, ok: bool) -> str:
     return f"Robot {robot_no} {'✅' if ok else '❌'}"
 
 
+def parse_float(value: str) -> float:
+    """Parse float from string, handling Turkish decimal format (comma)"""
+    if not value or value.strip() == "":
+        return 0.0
+    try:
+        # Replace Turkish decimal comma with dot
+        value = str(value).replace(",", ".")
+        return float(value)
+    except:
+        return 0.0
+
+
 def ensure_chart_dir():
     """Ensure chart directory exists"""
     Path(CHART_DIR).mkdir(parents=True, exist_ok=True)
@@ -43,7 +55,7 @@ def read_latest_signals(ws, cols) -> List[Dict]:
     """
     Read latest AI signals from Google Sheets
 
-    Returns list of signal dicts with market data
+    Returns list of signal dicts with market data and row indices
     """
     logger.info("Reading latest AI signals from Google Sheets...")
 
@@ -54,25 +66,29 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         logger.warning("No data in sheet")
         return []
 
-    # Son ayırıcıyı bul (en son veri grubunu işaretler)
+    # Son ayırıcıyı bul (Robot 1 separator with "📊 VERİ TOPLAMA RAPORU" in column B)
     separator_idx = None
     for i in range(len(all_rows) - 1, 0, -1):
-        if len(all_rows[i]) > cols.AH - 1:
-            if all_rows[i][cols.AH - 1] == "Ayırıcı":
+        if len(all_rows[i]) > cols.B - 1:
+            market_value = all_rows[i][cols.B - 1]
+            if market_value and ("📊" in market_value or "RAPORU" in market_value):
                 separator_idx = i
                 break
 
     if separator_idx is None:
-        logger.warning("Ayırıcı bulunamadı")
+        logger.warning("Ayırıcı bulunamadı (separator not found)")
         data_rows = all_rows[1:]
+        start_row = 2  # Row 1 is header, data starts at row 2
     else:
         data_rows = all_rows[separator_idx + 1:]
+        start_row = separator_idx + 2  # +1 for separator, +1 for 1-indexed
 
-    logger.info(f"Found {len(data_rows)} rows in latest batch")
+    logger.info(f"Found {len(data_rows)} rows in latest batch (starting at row {start_row})")
 
     # Parse signal data
     signals = []
-    for row in data_rows:
+    for idx, row in enumerate(data_rows):
+        row_index = start_row + idx
         if len(row) < cols.B:
             continue
 
@@ -80,36 +96,47 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         if not market or market == "":
             continue
 
-        # Check if this row has AI signals
-        ensemble_signal = row[cols.Y - 1] if len(row) > cols.Y - 1 else ""
-        if not ensemble_signal or ensemble_signal == "":
-            continue  # Skip rows without AI signals
+        # Check if this row has Robot 7 Command Center decision (AG column)
+        final_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
+        if not final_signal or final_signal == "":
+            continue  # Skip rows without Robot 7 decision
 
         try:
-            # Parse data
-            price = float(row[cols.C - 1]) if len(row) > cols.C - 1 and row[cols.C - 1] else 0
-            ensemble_confidence = int(float(row[cols.Z - 1])) if len(row) > cols.Z - 1 and row[cols.Z - 1] else 0
+            # Parse data (handle Turkish decimal format)
+            price = parse_float(row[cols.C - 1]) if len(row) > cols.C - 1 else 0.0
 
-            # Parse indicators
+            # Robot 7 Command Center output (AG-AL)
+            final_confidence_str = row[cols.AH - 1] if len(row) > cols.AH - 1 else "0"
+            final_confidence = int(float(final_confidence_str.replace('%', ''))) if final_confidence_str else 0
+
+            final_reasoning = row[cols.AI - 1] if len(row) > cols.AI - 1 else ""
+            risk_level = row[cols.AK - 1] if len(row) > cols.AK - 1 else "MEDIUM"
+            suggested_action = row[cols.AL - 1] if len(row) > cols.AL - 1 else "SET ALERT"
+
+            # Parse indicators (corrected columns, handle Turkish decimal format)
             indicators = {}
-            if len(row) > cols.F - 1 and row[cols.F - 1]:
-                indicators['rsi'] = float(row[cols.F - 1])
-            if len(row) > cols.J - 1 and row[cols.J - 1]:
-                indicators['bb_upper'] = float(row[cols.J - 1])
-            if len(row) > cols.K - 1 and row[cols.K - 1]:
-                indicators['bb_middle'] = float(row[cols.K - 1])
-            if len(row) > cols.L - 1 and row[cols.L - 1]:
-                indicators['bb_lower'] = float(row[cols.L - 1])
-            if len(row) > cols.Q - 1 and row[cols.Q - 1]:
-                indicators['support'] = float(row[cols.Q - 1])
-            if len(row) > cols.R - 1 and row[cols.R - 1]:
-                indicators['resistance'] = float(row[cols.R - 1])
+            if len(row) > cols.G - 1 and row[cols.G - 1]:  # RSI
+                indicators['rsi'] = parse_float(row[cols.G - 1])
+            if len(row) > cols.I - 1 and row[cols.I - 1]:  # Bollinger Upper
+                indicators['bb_upper'] = parse_float(row[cols.I - 1])
+            if len(row) > cols.J - 1 and row[cols.J - 1]:  # Bollinger Middle
+                indicators['bb_middle'] = parse_float(row[cols.J - 1])
+            if len(row) > cols.K - 1 and row[cols.K - 1]:  # Bollinger Lower
+                indicators['bb_lower'] = parse_float(row[cols.K - 1])
+            if len(row) > cols.R - 1 and row[cols.R - 1]:  # Support
+                indicators['support'] = parse_float(row[cols.R - 1])
+            if len(row) > cols.S - 1 and row[cols.S - 1]:  # Resistance
+                indicators['resistance'] = parse_float(row[cols.S - 1])
 
             signals.append({
+                "row_index": row_index,
                 "market": market,
                 "price": price,
-                "ensemble_signal": ensemble_signal.upper(),
-                "ensemble_confidence": ensemble_confidence,
+                "ensemble_signal": final_signal.upper(),
+                "ensemble_confidence": final_confidence,
+                "reasoning": final_reasoning,
+                "risk_level": risk_level,
+                "suggested_action": suggested_action,
                 "indicators": indicators
             })
 
@@ -229,9 +256,10 @@ def create_chart(market: str, df: pd.DataFrame, signal: Dict) -> Optional[str]:
         )
         s = mpf.make_mpf_style(marketcolors=mc, gridstyle=':', y_on_right=False)
 
-        # Title with signal info
+        # Title with signal info (Robot 7 Command Center)
         signal_emoji = "🚀" if signal['ensemble_signal'] == "BUY" else "🔻" if signal['ensemble_signal'] == "SELL" else "⏸"
-        title = f"{market} - {signal_emoji} {signal['ensemble_signal']} ({signal['ensemble_confidence']}%)"
+        risk_emoji = "🟢" if signal.get('risk_level') == "LOW" else "🟡" if signal.get('risk_level') == "MEDIUM" else "🔴"
+        title = f"{market} - {signal_emoji} {signal['ensemble_signal']} ({signal['ensemble_confidence']}%) | {risk_emoji} {signal.get('risk_level', 'MEDIUM')} | {signal.get('suggested_action', 'SET ALERT')}"
 
         # Create chart
         fig, axes = mpf.plot(
@@ -270,7 +298,7 @@ def run():
         ensure_chart_dir()
 
         # Get secrets
-        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
 
         # Get Google Sheets client
         gc = get_gspread_client()
@@ -297,6 +325,7 @@ def run():
 
         successful = 0
         failed = 0
+        processed_rows = []  # Track successfully processed rows for status update
 
         for signal in high_confidence_signals:
             try:
@@ -313,6 +342,7 @@ def run():
 
                 if chart_path:
                     successful += 1
+                    processed_rows.append(signal['row_index'])  # Track for status update
                 else:
                     failed += 1
 
@@ -323,6 +353,20 @@ def run():
                 logger.error(f"Failed to process {signal['market']}: {e}")
                 failed += 1
                 continue
+
+        # Update Robot 4 status in Google Sheets (AX column)
+        if processed_rows:
+            logger.info("Updating Robot 4 status in Google Sheets...")
+            updated = 0
+            for row_idx in processed_rows:
+                try:
+                    ws.update_cell(row_idx, cols.AX, status_text(4, True))
+                    updated += 1
+                except Exception as e:
+                    logger.warning(f"Failed to update status for row {row_idx}: {e}")
+                    continue
+
+            logger.info(f"✓ Updated {updated}/{len(processed_rows)} rows with Robot 4 ✅")
 
         # Summary
         logger.info("=" * 60)

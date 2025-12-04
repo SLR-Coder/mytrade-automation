@@ -69,8 +69,8 @@ class OpenAIClient:
                             "content": prompt
                         }
                     ],
-                    temperature=0.3,  # Lower temperature for more consistent analysis
-                    max_tokens=500
+                    # Note: o3 model only supports default temperature (1.0)
+                    max_completion_tokens=500  # o3 model requires max_completion_tokens instead of max_tokens
                 )
 
                 # Parse response

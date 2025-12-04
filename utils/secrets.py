@@ -26,20 +26,19 @@ def get_secret(secret_name: str, required: bool = True) -> Optional[str]:
     if value:
         return value
 
-    # Try Google Secret Manager in production
-    if os.getenv("ENVIRONMENT") == "production":
-        try:
-            from google.cloud import secretmanager
-            client = secretmanager.SecretManagerServiceClient()
-            project_id = os.getenv("GCP_PROJECT", os.getenv("GOOGLE_CLOUD_PROJECT"))
+    # Try Google Secret Manager (always, not just in production)
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        project_id = os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT") or "mytrade-automation-2025"
 
-            if project_id:
-                name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-                response = client.access_secret_version(request={"name": name})
-                value = response.payload.data.decode("UTF-8")
-                return value
-        except Exception as e:
-            logger.warning(f"Failed to get secret {secret_name} from Secret Manager: {e}")
+        if project_id:
+            name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            value = response.payload.data.decode("UTF-8")
+            return value
+    except Exception as e:
+        logger.warning(f"Failed to get secret {secret_name} from Secret Manager: {e}")
 
     # Handle missing required secrets
     if required:
