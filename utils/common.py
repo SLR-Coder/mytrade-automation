@@ -352,6 +352,32 @@ def get_latest_market_data(ws: Any, cols: Any) -> List[Dict]:
             if len(row) > cols.T - 1:
                 indicators['trend'] = row[cols.T - 1]
 
+            # Parse SMC indicators (U-AF columns)
+            if len(row) > cols.U - 1:
+                indicators['fvg_status'] = row[cols.U - 1] if row[cols.U - 1] != "-" else None
+            if len(row) > cols.V - 1:
+                indicators['fvg_range'] = row[cols.V - 1] if row[cols.V - 1] != "-" else None
+            if len(row) > cols.W - 1:
+                indicators['liquidity_sweep'] = row[cols.W - 1] if row[cols.W - 1] != "-" else None
+            if len(row) > cols.X - 1:
+                indicators['sweep_level'] = row[cols.X - 1] if row[cols.X - 1] != "-" else None
+            if len(row) > cols.Y - 1:
+                indicators['rsi_divergence'] = row[cols.Y - 1] if row[cols.Y - 1] != "-" else None
+            if len(row) > cols.Z - 1:
+                indicators['structure_break'] = row[cols.Z - 1] if row[cols.Z - 1] != "-" else None
+            if len(row) > cols.AA - 1:
+                indicators['swing_high'] = parse_float(row[cols.AA - 1])
+            if len(row) > cols.AB - 1:
+                indicators['swing_low'] = parse_float(row[cols.AB - 1])
+            if len(row) > cols.AC - 1:
+                indicators['adr_pips'] = row[cols.AC - 1] if row[cols.AC - 1] != "-" else None
+            if len(row) > cols.AD - 1:
+                indicators['adr_exhaustion'] = row[cols.AD - 1] if row[cols.AD - 1] != "-" else None
+            if len(row) > cols.AE - 1:
+                indicators['htf_trend'] = row[cols.AE - 1] if row[cols.AE - 1] != "-" else None
+            if len(row) > cols.AF - 1:
+                indicators['session'] = row[cols.AF - 1] if row[cols.AF - 1] != "-" else None
+
             # Parse support/resistance levels
             support_levels = []
             resistance_levels = []

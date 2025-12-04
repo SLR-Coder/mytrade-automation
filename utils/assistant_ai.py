@@ -421,6 +421,33 @@ Teknik Göstergeler:
         if indicators.get('trend'):
             prompt += f"- Eğilim: {indicators['trend']}\n"
 
+        # Add SMC indicators (Smart Money Concepts)
+        prompt += "\nSMC Göstergeleri:\n"
+        if indicators.get('fvg_status'):
+            prompt += f"- FVG (Fair Value Gap): {indicators['fvg_status']}\n"
+        if indicators.get('fvg_range'):
+            prompt += f"- FVG Aralığı: {indicators['fvg_range']}\n"
+        if indicators.get('liquidity_sweep'):
+            prompt += f"- Liquidity Sweep: {indicators['liquidity_sweep']}\n"
+        if indicators.get('sweep_level'):
+            prompt += f"- Sweep Seviyesi: {indicators['sweep_level']}\n"
+        if indicators.get('rsi_divergence'):
+            prompt += f"- RSI Divergence: {indicators['rsi_divergence']}\n"
+        if indicators.get('structure_break'):
+            prompt += f"- Structure Break: {indicators['structure_break']}\n"
+        if indicators.get('swing_high'):
+            prompt += f"- Son Swing High: ${indicators['swing_high']:.2f}\n"
+        if indicators.get('swing_low'):
+            prompt += f"- Son Swing Low: ${indicators['swing_low']:.2f}\n"
+        if indicators.get('adr_pips'):
+            prompt += f"- ADR (Pip): {indicators['adr_pips']}\n"
+        if indicators.get('adr_exhaustion'):
+            prompt += f"- ADR Kullanım: {indicators['adr_exhaustion']}\n"
+        if indicators.get('htf_trend'):
+            prompt += f"- HTF Trend: {indicators['htf_trend']}\n"
+        if indicators.get('session'):
+            prompt += f"- Session: {indicators['session']}\n"
+
         prompt += """
 
 KİŞİSEL ANALİZ YAPARAK tam olarak şu formatta cevap ver:
