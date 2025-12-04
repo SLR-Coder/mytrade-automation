@@ -58,7 +58,7 @@ class NewsAnalyzer:
         gemini_key = get_secret("GEMINI_API_KEY", required=False)
         if gemini_key:
             genai.configure(api_key=gemini_key)
-            self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+            self.gemini_model = genai.GenerativeModel('gemini-2.5-flash')
         else:
             self.gemini_model = None
 

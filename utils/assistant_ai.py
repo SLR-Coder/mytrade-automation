@@ -446,7 +446,7 @@ REASONING: [Kullanıcı profiline uygun, teknik göstergeleri detaylıca analiz 
 
             genai.configure(api_key=api_key)
             # Use Gemini 2.0 Flash Thinking for better intraday analysis
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.5-pro")
 
             response = model.generate_content(prompt)
             text = response.text

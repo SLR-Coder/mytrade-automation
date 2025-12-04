@@ -37,7 +37,7 @@ class GeminiClient:
             raise ValueError("GEMINI_API_KEY not found")
 
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = genai.GenerativeModel("gemini-2.5-pro")
 
     def analyze_market(
         self,
