@@ -760,9 +760,13 @@ class TwelveDataClient:
             candles = []
             for item in values:
                 try:
-                    # Parse datetime
+                    # Parse datetime (handle both date-only and datetime formats)
                     dt_str = item.get("datetime", "")
-                    dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        # Daily interval returns date-only format
+                        dt = datetime.strptime(dt_str, "%Y-%m-%d")
                     timestamp = int(dt.timestamp())
 
                     candles.append({
