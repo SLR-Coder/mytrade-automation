@@ -18,7 +18,8 @@ from config.constants import (
 )
 from utils.common import (
     status_text, parse_float, get_latest_market_data,
-    get_last_6_batches, analyze_temporal_trend
+    get_last_6_batches, analyze_temporal_trend,
+    is_ready_for_analysis, BATCH_STATUS_READY
 )  # DRY: All common functions from single source
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
@@ -144,13 +145,24 @@ async def run():
         logger.info(f"\n🎯 {len(markets_data)} piyasa için TEMPORAL TREND analizi başlıyor...\n")
 
         processed = 0
+        skipped_not_ready = 0
+
         for market_data in markets_data:
             market = market_data["market"]
             price = market_data["price"]
             indicators = market_data["indicators"]
             row_index = market_data["row_index"]
 
-            # Status kontrolü - Robot 3 zaten işlenmişse atla (AW sütunu)
+            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+            try:
+                robot1_status = ws.cell(row_index, cols.AU).value or ""
+                if not is_ready_for_analysis(robot1_status):
+                    skipped_not_ready += 1
+                    continue  # Sessizce atla - henüz hazır değil
+            except:
+                pass  # Status okunamazsa devam et
+
+            # 2. Robot 3 status kontrolü - Zaten işlenmişse atla (AW sütunu)
             try:
                 current_status = ws.cell(row_index, cols.AW).value or ""
                 if "Robot 3" in current_status and "✅" in current_status:
@@ -244,6 +256,8 @@ async def run():
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 3 TAMAMLANDI")
         logger.info(f"  İşlenen piyasa: {processed}/{len(markets_data)}")
+        if skipped_not_ready > 0:
+            logger.info(f"  ⏳ Beklemede (henüz hazır değil): {skipped_not_ready}")
         logger.info("=" * 80)
 
     except Exception as e:

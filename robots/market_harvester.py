@@ -16,7 +16,7 @@ from config.markets import MARKETS, get_market_category, TOTAL_MARKETS
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
-from utils.common import status_text  # DRY: Import from common
+from utils.common import status_text, get_batch_number, batch_status_text  # DRY: Import from common
 from utils.api_clients import (
     BinanceClient, PolygonClient, AlphaVantageClient,
     GoldPriceClient, TCMBClient, FrankfurterClient, TwelveDataClient
@@ -243,7 +243,7 @@ def fetch_twelve_data(twelve_client: TwelveDataClient, symbol: str, category: st
         return None
 
 
-def write_to_sheet(ws, cols, data_list: List[Dict]):
+def write_to_sheet(ws, cols, data_list: List[Dict], batch_status: str):
     """
     Write market data to Google Sheets
 
@@ -251,6 +251,7 @@ def write_to_sheet(ws, cols, data_list: List[Dict]):
         ws: Worksheet object
         cols: Column mapping
         data_list: List of market data dicts
+        batch_status: Batch status text ("⏳ Beklemede (X/6)" or "✅ Analiz Hazır")
     """
     # Türkiye saati (UTC+3)
     turkey_tz = pytz.timezone('Europe/Istanbul')
@@ -297,8 +298,8 @@ def write_to_sheet(ws, cols, data_list: List[Dict]):
         # Trend
         row[cols.T - 1] = indicators.get("trend", "")
 
-        # Durum (Robot 1: AU sütunu)
-        row[cols.AU - 1] = status_text(1, True)
+        # Durum (Robot 1: AU sütunu) - Batch status kullan
+        row[cols.AU - 1] = batch_status
         row[cols.AS - 1] = f"Kaynak: {data.get('source', 'Bilinmiyor')}"  # Notlar
 
         rows_to_add.append(row)
@@ -313,6 +314,7 @@ def write_to_sheet(ws, cols, data_list: List[Dict]):
     separator[cols.D - 1] = "Robot 1 - Market Harvester"  # Robot bilgisi
     separator[cols.E - 1] = now.strftime("%A, %d %B %Y")  # Uzun tarih
     separator[cols.AS - 1] = f"Veri kaynakları: Twelve Data, Binance, TCMB"  # Notlar
+    separator[cols.AU - 1] = batch_status  # Batch status (Beklemede/Analiz Hazır)
 
     # Write to sheet
     ws.append_rows([separator] + rows_to_add, value_input_option="RAW")
@@ -500,8 +502,14 @@ def run():
         # Write to Google Sheets
         if all_data:
             logger.info("=" * 60)
+
+            # Calculate batch number and status
+            batch_number = get_batch_number(ws, cols)
+            batch_status = batch_status_text(batch_number)
+            logger.info(f"📊 Batch: {batch_number}/6 → {batch_status}")
+
             logger.info(f"Writing {len(all_data)} markets to Google Sheets...")
-            write_to_sheet(ws, cols, all_data)
+            write_to_sheet(ws, cols, all_data, batch_status)
             logger.info("=" * 60)
             logger.info("✅ ROBOT 1 COMPLETED SUCCESSFULLY")
             logger.info("=" * 60)

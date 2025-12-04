@@ -160,6 +160,96 @@ def status_text(robot_no: int, ok: bool) -> str:
     return f"Robot {robot_no} {'✅' if ok else '❌'}"
 
 
+# ============================================================================
+# BATCH COUNTER SYSTEM FOR ROBOT 1 → ROBOT 3 WORKFLOW
+# ============================================================================
+# Robot 1 runs every 5 minutes, Robot 3 runs every 30 minutes
+# Robot 1 writes "⏳ Beklemede (X/6)" for batches 1-5
+# Robot 1 writes "✅ Analiz Hazır" for batch 6
+# Robot 3 only processes rows with "✅ Analiz Hazır"
+# ============================================================================
+
+BATCH_SIZE = 6  # 6 x 5 minutes = 30 minutes
+BATCH_STATUS_WAITING = "⏳ Beklemede"
+BATCH_STATUS_READY = "✅ Analiz Hazır"
+
+
+def get_batch_number(ws: Any, cols: Any) -> int:
+    """
+    Get current batch number by counting separators since last "Analiz Hazır"
+
+    Args:
+        ws: Google Sheets worksheet object
+        cols: Column mapping object
+
+    Returns:
+        Current batch number (1-6)
+    """
+    try:
+        # Read last 50 rows to find batch status
+        all_rows = ws.get_all_values()
+        if len(all_rows) <= 1:
+            return 1  # First batch
+
+        # Count separators (VERİ TOPLAMA RAPORU) since last "Analiz Hazır"
+        count = 0
+        for i in range(len(all_rows) - 1, 0, -1):
+            row = all_rows[i]
+
+            # Check if this is a separator row
+            if len(row) > cols.B - 1:
+                market_value = row[cols.B - 1]
+                if market_value and ("📊" in market_value or "RAPORU" in market_value):
+                    # Check AU column for status
+                    if len(row) > cols.AU - 1:
+                        status = row[cols.AU - 1]
+                        if BATCH_STATUS_READY in str(status):
+                            # Found last "Analiz Hazır", return count + 1
+                            return min(count + 1, BATCH_SIZE)
+                    count += 1
+
+                    # Safety limit - don't count more than BATCH_SIZE
+                    if count >= BATCH_SIZE:
+                        return BATCH_SIZE
+
+        # No "Analiz Hazır" found, return count + 1
+        return min(count + 1, BATCH_SIZE)
+
+    except Exception as e:
+        logger.warning(f"Batch number hesaplanamadı: {e}, varsayılan 1 kullanılıyor")
+        return 1
+
+
+def batch_status_text(batch_number: int) -> str:
+    """
+    Generate batch status text for Robot 1
+
+    Args:
+        batch_number: Current batch number (1-6)
+
+    Returns:
+        "⏳ Beklemede (X/6)" for batches 1-5
+        "✅ Analiz Hazır" for batch 6
+    """
+    if batch_number >= BATCH_SIZE:
+        return BATCH_STATUS_READY
+    else:
+        return f"{BATCH_STATUS_WAITING} ({batch_number}/{BATCH_SIZE})"
+
+
+def is_ready_for_analysis(status: str) -> bool:
+    """
+    Check if a row is ready for Robot 3 analysis
+
+    Args:
+        status: Status text from AU column
+
+    Returns:
+        True if row has "✅ Analiz Hazır" status
+    """
+    return BATCH_STATUS_READY in str(status) if status else False
+
+
 def get_latest_market_data(ws: Any, cols: Any) -> List[Dict]:
     """
     Read latest market data from Google Sheets after last separator
