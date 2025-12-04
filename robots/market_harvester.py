@@ -575,10 +575,10 @@ def run():
         skipped_markets = []
 
         # Twelve Data rate limiting: 8 API calls/minute (free tier)
-        # Each market uses 2 calls (quote + time_series)
-        # So we can fetch 4 markets per minute
+        # Each market uses 4 calls (quote + 1h + 5min + daily for SMC)
+        # So we can fetch 2 markets per minute
         twelve_data_call_count = 0
-        TWELVE_DATA_RATE_LIMIT = 4  # Markets per minute (8 calls / 2 per market)
+        TWELVE_DATA_RATE_LIMIT = 2  # Markets per minute (8 calls / 4 per market)
 
         # 1. FOREX (5 markets)
         logger.info("=" * 60)
