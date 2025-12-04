@@ -2,15 +2,20 @@
 # -*- coding: utf-8 -*-
 """
 Otomasyon için sabit piyasa listesi
-5 Kategori = 27 Toplam Piyasa
-- FOREX: 7 parite (majör + TRY paritelerini)
-- CRYPTO: 5 coin
-- INDEX: 5 index
-- COMMODITY: 5 emtia
-- STOCK_CFD: 5 hisse
+5 Kategori = 25 Toplam Piyasa
+
+TwelveData FREE TIER uyumlu semboller:
+- FOREX: 7 parite (majör + TRY pariteleri) ✅
+- CRYPTO: 5 coin (Binance API) ✅
+- INDEX: 5 ETF (US indeksleri free tier'da çalışmıyor, ETF alternatifleri kullanılıyor)
+- COMMODITY: 2 emtia (Altın/Gümüş - metals.live API ile)
+- STOCK_CFD: 5 hisse ✅
+
+NOT: TwelveData free tier'da SPX, NDX, DJI gibi US indeks sembolleri
+"Grow" planı gerektiriyor. Bu yüzden ETF alternatifleri kullanılıyor.
 """
 
-# OTOMASYON İÇİN 27 PİYASA (5 kategori)
+# OTOMASYON İÇİN 24 PİYASA (5 kategori)
 MARKETS = {
     "FOREX": [
         "EUR/USD",
@@ -30,20 +35,21 @@ MARKETS = {
         "BNB/USDT",
     ],
 
+    # INDEX: TwelveData free tier'da çalışan ETF sembolleri
+    # Orijinal indeksler (SPX, NDX, DJI, NKY) Grow planı gerektiriyor
     "INDEX": [
-        "SPX",      # S&P 500
-        "NDX",      # Nasdaq 100
-        "DJI",      # Dow Jones
-        "DAX",      # DAX 40
-        "NKY",      # Nikkei 225
+        "SPY",      # S&P 500 ETF (SPDR)
+        "QQQ",      # Nasdaq 100 ETF (Invesco)
+        "DIA",      # Dow Jones ETF (SPDR)
+        "EWG",      # Germany/DAX ETF (iShares)
+        "EWJ",      # Japan/Nikkei ETF (iShares)
     ],
 
+    # COMMODITY: Sadece metals.live API ile çalışan emtialar
+    # Petrol ve doğalgaz TwelveData free tier'da çalışmıyor
     "COMMODITY": [
-        "XAU/USD",  # Altın
-        "WTI/USD",  # WTI Petrol
-        "BRN/USD",  # Brent Petrol
-        "XAG/USD",  # Gümüş
-        "NG/USD",   # Doğalgaz
+        "XAU/USD",  # Altın (metals.live API)
+        "XAG/USD",  # Gümüş (metals.live API)
     ],
 
     "STOCK_CFD": [

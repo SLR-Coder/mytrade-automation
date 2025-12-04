@@ -446,34 +446,21 @@ def run():
                 logger.warning(f"⏭️  Skipping {symbol} - Twelve Data API not available")
                 skipped_markets.append((symbol, "Twelve Data required"))
 
-        # 4. COMMODITY (5 markets)
+        # 4. COMMODITY (Gold/Silver only - using metals.live API)
+        # TwelveData free tier doesn't support commodity symbols
         logger.info("=" * 60)
         logger.info(f"🪙 COMMODITY: {len(MARKETS['COMMODITY'])} markets")
         logger.info("=" * 60)
         for pair in MARKETS["COMMODITY"]:
-            data = None
-
-            # Priority: Twelve Data → GoldPriceClient (fallback)
-            if twelve_data:
-                # Rate limiting check
-                if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    logger.info(f"⏱️  Rate limit reached ({twelve_data_call_count} markets), waiting 60 seconds...")
-                    time.sleep(60)
-                    twelve_data_call_count = 0
-
-                data = fetch_twelve_data(twelve_data, pair, "COMMODITY")
-                twelve_data_call_count += 1
-            elif pair in ["XAU/USD", "XAG/USD"]:
-                # Fallback to GoldPriceClient for gold/silver only
-                data = fetch_commodity_data(gold_client, pair)
-            else:
-                logger.warning(f"⏭️  Skipping {pair} - Twelve Data API not available")
-                skipped_markets.append((pair, "Twelve Data required"))
+            # Use GoldPriceClient (metals.live API) - FREE and reliable
+            data = fetch_commodity_data(gold_client, pair)
 
             if data and usd_try_rate:
                 data["price_try"] = convert_to_try(data["price"], usd_try_rate)
             if data:
                 all_data.append(data)
+            else:
+                skipped_markets.append((pair, "Metals API failed"))
             time.sleep(0.5)
 
         # 5. STOCK_CFD (5 markets)
