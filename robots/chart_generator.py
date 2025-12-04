@@ -16,7 +16,7 @@ from pathlib import Path
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
-from utils.common import status_text, parse_float  # DRY: Import from common
+from utils.common import status_text, parse_float, is_ready_for_analysis  # DRY: Import from common
 from utils.api_clients import BinanceClient, PolygonClient
 
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +79,11 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
         if not market or market == "":
             continue
+
+        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+        robot1_status = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+        if not is_ready_for_analysis(robot1_status):
+            continue  # Henüz hazır değil
 
         # Check if this row has Robot 7 Command Center decision (AG column)
         final_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""

@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
-from utils.common import status_text  # DRY: Import from common
+from utils.common import status_text, is_ready_for_analysis, BATCH_STATUS_READY  # DRY: Import from common
 from utils.assistant_ai import create_assistant, BALANCED_PROFILE
 from utils.meta_analyzer import create_command_center
 
@@ -172,6 +172,8 @@ def run():
 
         # Process each market
         processed = 0
+        skipped_not_ready = 0
+
         for row in data_rows:
             # Skip empty rows
             if len(row) < cols.B or not row[cols.B - 1]:
@@ -187,7 +189,16 @@ def run():
             except:
                 price = 0
 
-            # Status kontrolü - Robot 7 zaten işlenmişse atla (BA sütunu)
+            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+            try:
+                robot1_status = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+                if not is_ready_for_analysis(robot1_status):
+                    skipped_not_ready += 1
+                    continue  # Sessizce atla - henüz hazır değil
+            except:
+                pass  # Status okunamazsa devam et
+
+            # 2. Robot 7 status kontrolü - Zaten işlenmişse atla (BA sütunu)
             try:
                 current_status = ws.cell(row_index, cols.BA).value or ""
                 if "Robot 7" in current_status and "✅" in current_status:
@@ -265,6 +276,8 @@ def run():
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 7 TAMAMLANDI")
         logger.info(f"  İşlenen piyasa: {processed}/{len(data_rows)}")
+        if skipped_not_ready > 0:
+            logger.info(f"  ⏳ Beklemede (henüz hazır değil): {skipped_not_ready}")
         logger.info("=" * 80)
 
     except Exception as e:

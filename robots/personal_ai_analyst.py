@@ -15,7 +15,8 @@ from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.assistant_ai import create_personal_analyst
 from utils.common import (
-    get_latest_market_data, get_last_6_batches, status_text, analyze_temporal_trend
+    get_latest_market_data, get_last_6_batches, status_text, analyze_temporal_trend,
+    is_ready_for_analysis, BATCH_STATUS_READY
 )  # DRY: All common functions from single source
 
 logging.basicConfig(level=logging.INFO)
@@ -65,13 +66,24 @@ def run():
             logger.info(f"  Using default Jirad Fusion Multi-Engine prompt")
 
         processed = 0
+        skipped_not_ready = 0
+
         for market_data in markets_data:
             market = market_data["market"]
             price = market_data["price"]
             indicators = market_data["indicators"]
             row_index = market_data["row_index"]
 
-            # Status kontrolü - Robot 8 zaten işlenmişse atla (BB sütunu)
+            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+            try:
+                robot1_status = ws.cell(row_index, cols.AU).value or ""
+                if not is_ready_for_analysis(robot1_status):
+                    skipped_not_ready += 1
+                    continue  # Sessizce atla - henüz hazır değil
+            except:
+                pass  # Status okunamazsa devam et
+
+            # 2. Robot 8 status kontrolü - Zaten işlenmişse atla (BB sütunu)
             try:
                 current_status = ws.cell(row_index, cols.BB).value or ""
                 if "Robot 8" in current_status and "✅" in current_status:
@@ -124,8 +136,10 @@ def run():
                 continue
 
         logger.info("\n" + "=" * 80)
-        logger.info(f"ROBOT 8 TAMAMLANDI")
-        logger.info(f"  Islenen piyasa: {processed}/{len(markets_data)}")
+        logger.info(f"✅ ROBOT 8 TAMAMLANDI")
+        logger.info(f"  İşlenen piyasa: {processed}/{len(markets_data)}")
+        if skipped_not_ready > 0:
+            logger.info(f"  ⏳ Beklemede (henüz hazır değil): {skipped_not_ready}")
         logger.info("=" * 80)
 
     except Exception as e:

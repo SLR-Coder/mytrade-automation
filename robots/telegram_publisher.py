@@ -20,7 +20,8 @@ from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.common import (
-    get_last_6_batches, status_text, parse_float, analyze_temporal_trend
+    get_last_6_batches, status_text, parse_float, analyze_temporal_trend,
+    is_ready_for_analysis
 )  # DRY: Import from common
 from utils.telegram_formatter import get_performance_badge
 
@@ -194,6 +195,11 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
         if not market or market == "":
             continue
+
+        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (AU sütunu)
+        robot1_status = row[cols.AU - 1] if len(row) > cols.AU - 1 else ""
+        if not is_ready_for_analysis(robot1_status):
+            continue  # Henüz hazır değil
 
         # Check if Robot 7 Command Center has made decision (AG column)
         final_signal = row[cols.AG - 1] if len(row) > cols.AG - 1 else ""
