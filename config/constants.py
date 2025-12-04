@@ -163,7 +163,7 @@ WIN_RATE_THRESHOLD_FAIR = 50
 # ============================================================================
 # AI MODEL NAMES (Environment Overridable)
 # ============================================================================
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-thinking-exp-01-21"
+DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
 """Default Gemini model for Personal AI Analyst"""
 
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-20250514"
