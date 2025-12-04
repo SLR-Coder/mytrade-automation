@@ -308,8 +308,8 @@ ADR: %95 kullanıldı (exhausted) ❌
 Session: Asia (05:00 UTC+3) ❌
 
 SIGNAL: HOLD
-CONFIDENCE: 0%
-REASONING: Engine kriterleri yetersiz. Liquidity sweep yok, FVG yok, HTF trend belirsiz. ADR %95 exhausted - yeni pozisyon tehlikeli. Asia session düşük volatilite. Setup kalitesi düşük, bekleme tavsiye edilir.
+CONFIDENCE: 55%
+REASONING: Engine kriterleri yetersiz. Liquidity sweep yok, FVG yok, HTF trend belirsiz. ADR %95 exhausted - yeni pozisyon tehlikeli. Asia session düşük volatilite. Setup kalitesi düşük, bekleme tavsiye edilir. Güven %55 çünkü temel trend (EMA200 üstünde) pozitif ama giriş kriterleri eksik.
 
 ───────────────────────────────────────────────────────────────────
 
@@ -335,7 +335,7 @@ ANALİZ ÇIKTISI (TÜRKÇE)
 ═══════════════════════════════════════════════════════════════════
 
 1. SIGNAL: BUY / SELL / HOLD
-2. CONFIDENCE: %60-100 arası
+2. CONFIDENCE: %40-100 arası (HOLD için de %40-60 arasında ver, ASLA %0 verme!)
 3. REASONING:
    - Hangi engine tetiklendi? (Engine 1, Engine 4 veya her ikisi)
    - FVG var mı? Sweep oldu mu? Divergence var mı?
@@ -348,7 +348,8 @@ ANALİZ ÇIKTISI (TÜRKÇE)
 ✅ Engine 1 veya Engine 4 kriterlerinden en az birinin TÜM şartları sağlanmalı
 ✅ Şüpheli durumlarda HOLD de
 ✅ Risk/Reward minimum 2.5R olmalı
-✅ Tüm analizi TÜRKÇE yap"""
+✅ Tüm analizi TÜRKÇE yap
+✅ CONFIDENCE ASLA %0 olmasın! HOLD için bile %40-60 arası ver (ne kadar emin olduğunu gösterir)"""
 
     def analyze(self, market: str, price: float, indicators: Dict) -> Optional[Dict]:
         """
