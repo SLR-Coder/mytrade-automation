@@ -12,7 +12,7 @@ import pytz
 import logging
 from typing import Dict, List, Optional
 
-from config.markets import MARKETS, get_market_category
+from config.markets import MARKETS, get_market_category, TOTAL_MARKETS
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
@@ -504,9 +504,9 @@ def run():
         logger.info("=" * 60)
         logger.info("📊 COLLECTION SUMMARY")
         logger.info("=" * 60)
-        logger.info(f"✅ Collected: {len(all_data)}/25 markets")
+        logger.info(f"✅ Collected: {len(all_data)}/{TOTAL_MARKETS} markets")
         if skipped_markets:
-            logger.info(f"⏭️  Skipped: {len(skipped_markets)}/25 markets")
+            logger.info(f"⏭️  Skipped: {len(skipped_markets)}/{TOTAL_MARKETS} markets")
             for market, reason in skipped_markets:
                 logger.info(f"   - {market}: {reason}")
 

@@ -590,8 +590,32 @@ class TwelveDataClient:
     - Real-time quotes with OHLC, volume, change%
     - Historical candles for technical analysis
     - API Docs: https://twelvedata.com/docs
+
+    IMPORTANT: Free tier has limitations:
+    - INDEX symbols (SPX, NDX, DJI, NKY) require "Grow" paid plan
+    - Use ETF alternatives: SPY, QQQ, DIA for free tier
+    - COMMODITY oil/gas symbols need special handling
     """
     BASE_URL = "https://api.twelvedata.com"
+
+    # ETF alternatives for INDEX symbols (free tier compatible)
+    # These ETFs track the same indices but work on free tier
+    INDEX_TO_ETF_MAP = {
+        "SPX": "SPY",    # S&P 500 → SPDR S&P 500 ETF
+        "NDX": "QQQ",    # Nasdaq 100 → Invesco QQQ ETF
+        "DJI": "DIA",    # Dow Jones → SPDR Dow Jones ETF
+        "NKY": "EWJ",    # Nikkei 225 → iShares MSCI Japan ETF
+        "DAX": "EWG",    # DAX → iShares MSCI Germany ETF
+    }
+
+    # Commodity symbol mapping for TwelveData
+    COMMODITY_SYMBOL_MAP = {
+        "XAU/USD": "XAU/USD",   # Gold - works as is
+        "XAG/USD": "XAG/USD",   # Silver - works as is
+        "WTI/USD": "USO",       # WTI Oil → US Oil Fund ETF
+        "BRN/USD": "BNO",       # Brent Oil → Brent Oil Fund ETF
+        "NG/USD": "UNG",        # Natural Gas → US Natural Gas Fund ETF
+    }
 
     def __init__(self, api_key: Optional[str] = None):
         """
@@ -614,17 +638,23 @@ class TwelveDataClient:
 
         Returns:
             Normalized symbol for Twelve Data
+
+        Note: INDEX symbols use ETF alternatives for free tier compatibility
         """
-        # Remove slashes for most symbols
         if category == "CRYPTO":
             # BTC/USDT -> BTC/USD (Twelve Data uses USD, not USDT)
             return symbol.replace("/USDT", "/USD")
-        elif category in ["FOREX", "COMMODITY"]:
+        elif category == "FOREX":
             # EUR/USD -> EUR/USD (keep as is)
             return symbol
         elif category == "INDEX":
-            # SPX -> SPX (keep as is)
-            return symbol
+            # Use ETF alternatives for free tier
+            # SPX -> SPY, NDX -> QQQ, DJI -> DIA, etc.
+            return self.INDEX_TO_ETF_MAP.get(symbol, symbol)
+        elif category == "COMMODITY":
+            # Use commodity symbol mapping
+            # WTI/USD -> USO (ETF), BRN/USD -> BNO (ETF)
+            return self.COMMODITY_SYMBOL_MAP.get(symbol, symbol)
         elif category == "STOCK_CFD":
             # NVDA -> NVDA (keep as is)
             return symbol
