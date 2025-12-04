@@ -2,17 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 Otomasyon için sabit piyasa listesi
-5 Kategori = 25 Toplam Piyasa
+5 Kategori = 24 Toplam Piyasa
 
-TwelveData FREE TIER uyumlu semboller:
+TwelveData GROW PLAN ($79/ay):
+- 377 API credit/dakika (rate limit neredeyse yok)
+- Günlük limit YOK
 - FOREX: 7 parite (majör + TRY pariteleri) ✅
-- CRYPTO: 5 coin (Binance API) ✅
-- INDEX: 5 ETF (US indeksleri free tier'da çalışmıyor, ETF alternatifleri kullanılıyor)
-- COMMODITY: 2 emtia (Altın/Gümüş - metals.live API ile)
+- CRYPTO: 5 coin (Binance API - daha hızlı) ✅
+- INDEX: 5 ETF ✅
+- COMMODITY: 2 emtia (XAU/USD, XAG/USD - TwelveData ile) ✅
 - STOCK_CFD: 5 hisse ✅
-
-NOT: TwelveData free tier'da SPX, NDX, DJI gibi US indeks sembolleri
-"Grow" planı gerektiriyor. Bu yüzden ETF alternatifleri kullanılıyor.
 """
 
 # OTOMASYON İÇİN 24 PİYASA (5 kategori)
@@ -35,8 +34,7 @@ MARKETS = {
         "BNB/USDT",
     ],
 
-    # INDEX: TwelveData free tier'da çalışan ETF sembolleri
-    # Orijinal indeksler (SPX, NDX, DJI, NKY) Grow planı gerektiriyor
+    # INDEX: ETF sembolleri (likidite ve spread açısından daha iyi)
     "INDEX": [
         "SPY",      # S&P 500 ETF (SPDR)
         "QQQ",      # Nasdaq 100 ETF (Invesco)
@@ -45,11 +43,10 @@ MARKETS = {
         "EWJ",      # Japan/Nikkei ETF (iShares)
     ],
 
-    # COMMODITY: Sadece metals.live API ile çalışan emtialar
-    # Petrol ve doğalgaz TwelveData free tier'da çalışmıyor
+    # COMMODITY: TwelveData Grow plan ile destekleniyor
     "COMMODITY": [
-        "XAU/USD",  # Altın (metals.live API)
-        "XAG/USD",  # Gümüş (metals.live API)
+        "XAU/USD",  # Altın (TwelveData)
+        "XAG/USD",  # Gümüş (TwelveData)
     ],
 
     "STOCK_CFD": [

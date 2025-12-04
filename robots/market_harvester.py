@@ -19,7 +19,7 @@ from utils.schema import resolve_columns, ColumnMapping
 from utils.common import status_text, get_batch_number, batch_status_text  # DRY: Import from common
 from utils.api_clients import (
     BinanceClient, PolygonClient, AlphaVantageClient,
-    GoldPriceClient, TCMBClient, FrankfurterClient, TwelveDataClient
+    TCMBClient, FrankfurterClient, TwelveDataClient
 )
 from utils.indicators import TechnicalIndicators
 from utils.smc_indicators import (
@@ -196,72 +196,6 @@ def fetch_crypto_data(binance_client: BinanceClient, pair: str) -> Optional[Dict
         return None
 
 
-def fetch_commodity_data(gold_client: GoldPriceClient, pair: str) -> Optional[Dict]:
-    """
-    Fetch commodity data (gold, silver, oil, etc.)
-    Not: Metals API sadece anlık fiyat veriyor, geçmiş veri yok
-
-    Args:
-        pair: Format "XAU/USD", "XAG/USD", etc.
-    """
-    logger.info(f"Fetching commodity data: {pair}")
-
-    # Map commodity symbols
-    commodity_map = {
-        "XAU/USD": "GOLD",     # Gold
-        "XAG/USD": "SILVER",   # Silver
-        "WTI/USD": None,       # WTI Oil - Not available in current API
-        "BRN/USD": None,       # Brent Oil - Not available in current API
-        "NG/USD": None,        # Natural Gas - Not available in current API
-    }
-
-    commodity_type = commodity_map.get(pair)
-    if commodity_type is None:
-        logger.warning(f"Commodity {pair} not available (API missing)")
-        return None
-
-    try:
-        if commodity_type == "GOLD":
-            data = gold_client.get_gold_price()
-        elif commodity_type == "SILVER":
-            data = gold_client.get_silver_price()
-        else:
-            return None
-
-        # Session bilgisini al (en azından bu var)
-        session_info = detect_session()
-
-        # Note: Free API doesn't provide historical data
-        # SMC göstergeleri için veri yok, sadece session
-        smc_indicators = {
-            "fvg_status": "-",
-            "fvg_range": "-",
-            "sweep_status": "-",
-            "sweep_level": "-",
-            "divergence_status": "-",
-            "structure_status": "-",
-            "swing_high": "-",
-            "swing_low": "-",
-            "adr_pips": "-",
-            "adr_exhaustion": "-",
-            "htf_trend": "-",
-            "session": session_info.get("session", "-")
-        }
-
-        return {
-            "market": pair,  # Use standard format
-            "price": data["price"],
-            "volume": 0,
-            "change_percent": 0,
-            "indicators": {},  # No indicators without historical data
-            "smc_indicators": smc_indicators,
-            "source": "Metals API"
-        }
-    except Exception as e:
-        logger.error(f"Commodity API failed for {pair}: {e}")
-        return None
-
-
 def calculate_smc_for_market(
     candles_5m: List[Dict],
     candles_1h: List[Dict],
@@ -372,7 +306,7 @@ def fetch_twelve_data(twelve_client: TwelveDataClient, symbol: str, category: st
                 outputsize=30,  # Son 30 mum (2.5 saat)
                 category=category
             )
-            time.sleep(0.5)  # Small delay between calls
+            time.sleep(0.2)  # Small delay between calls (Grow plan: 377 credits/min)
 
             # Günlük mumlar (ADR için) - sadece son 14 gün
             candles_daily = twelve_client.get_time_series(
@@ -540,7 +474,6 @@ def run():
         binance = BinanceClient()
         polygon = PolygonClient(polygon_key) if polygon_key else None
         alphavantage = AlphaVantageClient(alphavantage_key) if alphavantage_key else None
-        gold_client = GoldPriceClient()
         tcmb = TCMBClient()  # TRY exchange rates (FREE, no API key)
         twelve_data = TwelveDataClient(twelve_data_key) if twelve_data_key else None
 
@@ -610,7 +543,7 @@ def run():
 
             if data:
                 all_data.append(data)
-            time.sleep(1)  # Base delay between requests
+            time.sleep(0.3)  # Grow plan: 377 credits/min
 
         # 2. CRYPTO (5 markets)
         logger.info("=" * 60)
@@ -637,27 +570,29 @@ def run():
                     data["price_try"] = convert_to_try(data["price"], usd_try_rate)
                 if data:
                     all_data.append(data)
-                time.sleep(1)
+                time.sleep(0.3)  # Grow plan: 377 credits/min
             else:
                 logger.warning(f"⏭️  Skipping {symbol} - Twelve Data API not available")
                 skipped_markets.append((symbol, "Twelve Data required"))
 
-        # 4. COMMODITY (Gold/Silver only - using metals.live API)
-        # TwelveData free tier doesn't support commodity symbols
+        # 4. COMMODITY (Gold/Silver - TwelveData Grow plan)
         logger.info("=" * 60)
         logger.info(f"🪙 COMMODITY: {len(MARKETS['COMMODITY'])} markets")
         logger.info("=" * 60)
         for pair in MARKETS["COMMODITY"]:
-            # Use GoldPriceClient (metals.live API) - FREE and reliable
-            data = fetch_commodity_data(gold_client, pair)
-
-            if data and usd_try_rate:
-                data["price_try"] = convert_to_try(data["price"], usd_try_rate)
-            if data:
-                all_data.append(data)
+            if twelve_data:
+                # TwelveData Grow plan supports XAU/USD, XAG/USD
+                data = fetch_with_retry(twelve_data, pair, "COMMODITY")
+                if data and usd_try_rate:
+                    data["price_try"] = convert_to_try(data["price"], usd_try_rate)
+                if data:
+                    all_data.append(data)
+                else:
+                    skipped_markets.append((pair, "TwelveData failed"))
+                time.sleep(0.5)
             else:
-                skipped_markets.append((pair, "Metals API failed"))
-            time.sleep(0.5)
+                logger.warning(f"⏭️  Skipping {pair} - Twelve Data API not available")
+                skipped_markets.append((pair, "Twelve Data required"))
 
         # 5. STOCK_CFD (5 markets)
         logger.info("=" * 60)
@@ -671,7 +606,7 @@ def run():
                     data["price_try"] = convert_to_try(data["price"], usd_try_rate)
                 if data:
                     all_data.append(data)
-                time.sleep(1)
+                time.sleep(0.3)  # Grow plan: 377 credits/min
             else:
                 logger.warning(f"⏭️  Skipping {symbol} - Twelve Data API not available")
                 skipped_markets.append((symbol, "Twelve Data required"))
