@@ -122,7 +122,7 @@ def run():
                 ws.update_cell(row_index, cols.V, analysis['reasoning'][:500])  # Truncate to 500 chars
 
                 # Update status (Robot 8: BB sütunu)
-                ws.update_cell(row_index, cols.BB, common_status_text(8, True))
+                ws.update_cell(row_index, cols.BB, status_text(8, True))
 
                 processed += 1
                 logger.info(f"  {analysis['signal']} ({analysis['confidence']}%)")
