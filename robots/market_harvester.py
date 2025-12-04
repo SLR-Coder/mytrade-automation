@@ -372,7 +372,7 @@ def fetch_twelve_data(twelve_client: TwelveDataClient, symbol: str, category: st
                 outputsize=30,  # Son 30 mum (2.5 saat)
                 category=category
             )
-            time.sleep(0.5)  # Rate limiting
+            time.sleep(0.5)  # Small delay between calls
 
             # Günlük mumlar (ADR için) - sadece son 14 gün
             candles_daily = twelve_client.get_time_series(
@@ -574,14 +574,21 @@ def run():
         all_data = []
         skipped_markets = []
 
-        # Twelve Data rate limiting: 8 API calls/minute (free tier)
-        # Each market uses 4 calls (quote + 1h + 5min + daily for SMC)
-        # So we can fetch 2 markets per minute
-        twelve_data_call_count = 0
-        TWELVE_DATA_RATE_LIMIT = 2  # Markets per minute (8 calls / 4 per market)
-        rate_limit_start_time = time.time()  # Track when current minute started
+        # Helper function for rate limit retry
+        def fetch_with_retry(client, symbol, category, max_retries=3):
+            """Fetch data with automatic retry on rate limit"""
+            for attempt in range(max_retries):
+                data = fetch_twelve_data(client, symbol, category)
+                if data is not None:
+                    return data
+                # Check if it was a rate limit error (data is None means error)
+                # Wait and retry
+                wait_time = 60  # Wait 1 minute for rate limit reset
+                logger.info(f"⏱️  Rate limit for {symbol}, waiting {wait_time}s... (retry {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+            return None
 
-        # 1. FOREX (5 markets)
+        # 1. FOREX (7 markets)
         logger.info("=" * 60)
         logger.info(f"📊 FOREX: {len(MARKETS['FOREX'])} markets")
         logger.info("=" * 60)
@@ -590,19 +597,7 @@ def run():
             data = None
 
             if twelve_data:
-                # Rate limiting check - smart wait
-                if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    elapsed = time.time() - rate_limit_start_time
-                    wait_time = max(0, 60 - elapsed)  # Only wait remaining time
-                    if wait_time > 0:
-                        logger.info(f"⏱️  Rate limit ({twelve_data_call_count} markets in {elapsed:.0f}s), waiting {wait_time:.0f}s...")
-                        time.sleep(wait_time)
-                    twelve_data_call_count = 0
-                    rate_limit_start_time = time.time()  # Reset timer
-
-                data = fetch_twelve_data(twelve_data, pair, "FOREX")
-                twelve_data_call_count += 1
-
+                data = fetch_with_retry(twelve_data, pair, "FOREX")
                 if data and usd_try_rate:
                     data["price_try"] = convert_to_try(data["price"], usd_try_rate)
             elif alphavantage or polygon:
@@ -637,19 +632,7 @@ def run():
         logger.info("=" * 60)
         for symbol in MARKETS["INDEX"]:
             if twelve_data:
-                # Rate limiting check - smart wait
-                if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    elapsed = time.time() - rate_limit_start_time
-                    wait_time = max(0, 60 - elapsed)
-                    if wait_time > 0:
-                        logger.info(f"⏱️  Rate limit ({twelve_data_call_count} markets in {elapsed:.0f}s), waiting {wait_time:.0f}s...")
-                        time.sleep(wait_time)
-                    twelve_data_call_count = 0
-                    rate_limit_start_time = time.time()
-
-                data = fetch_twelve_data(twelve_data, symbol, "INDEX")
-                twelve_data_call_count += 1
-
+                data = fetch_with_retry(twelve_data, symbol, "INDEX")
                 if data and usd_try_rate:
                     data["price_try"] = convert_to_try(data["price"], usd_try_rate)
                 if data:
@@ -682,18 +665,7 @@ def run():
         logger.info("=" * 60)
         for symbol in MARKETS["STOCK_CFD"]:
             if twelve_data:
-                # Rate limiting check - smart wait
-                if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    elapsed = time.time() - rate_limit_start_time
-                    wait_time = max(0, 60 - elapsed)
-                    if wait_time > 0:
-                        logger.info(f"⏱️  Rate limit ({twelve_data_call_count} markets in {elapsed:.0f}s), waiting {wait_time:.0f}s...")
-                        time.sleep(wait_time)
-                    twelve_data_call_count = 0
-                    rate_limit_start_time = time.time()
-
-                data = fetch_twelve_data(twelve_data, symbol, "STOCK_CFD")
-                twelve_data_call_count += 1
+                data = fetch_with_retry(twelve_data, symbol, "STOCK_CFD")
 
                 if data and usd_try_rate:
                     data["price_try"] = convert_to_try(data["price"], usd_try_rate)
