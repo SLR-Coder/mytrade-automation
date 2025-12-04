@@ -579,6 +579,7 @@ def run():
         # So we can fetch 2 markets per minute
         twelve_data_call_count = 0
         TWELVE_DATA_RATE_LIMIT = 2  # Markets per minute (8 calls / 4 per market)
+        rate_limit_start_time = time.time()  # Track when current minute started
 
         # 1. FOREX (5 markets)
         logger.info("=" * 60)
@@ -589,11 +590,15 @@ def run():
             data = None
 
             if twelve_data:
-                # Rate limiting check
+                # Rate limiting check - smart wait
                 if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    logger.info(f"⏱️  Rate limit reached ({twelve_data_call_count} markets), waiting 60 seconds...")
-                    time.sleep(60)
+                    elapsed = time.time() - rate_limit_start_time
+                    wait_time = max(0, 60 - elapsed)  # Only wait remaining time
+                    if wait_time > 0:
+                        logger.info(f"⏱️  Rate limit ({twelve_data_call_count} markets in {elapsed:.0f}s), waiting {wait_time:.0f}s...")
+                        time.sleep(wait_time)
                     twelve_data_call_count = 0
+                    rate_limit_start_time = time.time()  # Reset timer
 
                 data = fetch_twelve_data(twelve_data, pair, "FOREX")
                 twelve_data_call_count += 1
@@ -632,11 +637,15 @@ def run():
         logger.info("=" * 60)
         for symbol in MARKETS["INDEX"]:
             if twelve_data:
-                # Rate limiting check
+                # Rate limiting check - smart wait
                 if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    logger.info(f"⏱️  Rate limit reached ({twelve_data_call_count} markets), waiting 60 seconds...")
-                    time.sleep(60)
+                    elapsed = time.time() - rate_limit_start_time
+                    wait_time = max(0, 60 - elapsed)
+                    if wait_time > 0:
+                        logger.info(f"⏱️  Rate limit ({twelve_data_call_count} markets in {elapsed:.0f}s), waiting {wait_time:.0f}s...")
+                        time.sleep(wait_time)
                     twelve_data_call_count = 0
+                    rate_limit_start_time = time.time()
 
                 data = fetch_twelve_data(twelve_data, symbol, "INDEX")
                 twelve_data_call_count += 1
@@ -673,11 +682,15 @@ def run():
         logger.info("=" * 60)
         for symbol in MARKETS["STOCK_CFD"]:
             if twelve_data:
-                # Rate limiting check
+                # Rate limiting check - smart wait
                 if twelve_data_call_count >= TWELVE_DATA_RATE_LIMIT:
-                    logger.info(f"⏱️  Rate limit reached ({twelve_data_call_count} markets), waiting 60 seconds...")
-                    time.sleep(60)
+                    elapsed = time.time() - rate_limit_start_time
+                    wait_time = max(0, 60 - elapsed)
+                    if wait_time > 0:
+                        logger.info(f"⏱️  Rate limit ({twelve_data_call_count} markets in {elapsed:.0f}s), waiting {wait_time:.0f}s...")
+                        time.sleep(wait_time)
                     twelve_data_call_count = 0
+                    rate_limit_start_time = time.time()
 
                 data = fetch_twelve_data(twelve_data, symbol, "STOCK_CFD")
                 twelve_data_call_count += 1
