@@ -435,10 +435,10 @@ def run():
                     row_idx = result['row_index']
                     chart_url = result['chart_url']
 
-                    # Write chart URL to BD column (Grafik URL)
+                    # Write chart URL to BT column (Grafik URL)
                     if chart_url and chart_url.startswith('http'):
-                        ws.update_cell(row_idx, cols.BD, chart_url)
-                        logger.info(f"  Row {row_idx}: Chart URL written to BD")
+                        ws.update_cell(row_idx, cols.BT, chart_url)
+                        logger.info(f"  Row {row_idx}: Chart URL written to BT")
 
                     # Update Robot 4 status (BN column)
                     ws.update_cell(row_idx, cols.BN, status_text(4, True))
