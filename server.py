@@ -116,7 +116,21 @@ def news_monitor():
 
 @app.route("/analysis-pipeline", methods=["POST", "GET"])
 def analysis_pipeline():
-    """Robots 3,8,7,4,5: Full Analysis Pipeline"""
+    """
+    Robots 3,8,7,4,5: Full Analysis Pipeline
+
+    Waits for Robot 1 to complete before starting analysis.
+    Robot 1 runs at :00, :05, :10... and takes ~50 seconds.
+    This endpoint should be scheduled at :02, :32 (2 min offset).
+    """
+    import time
+
+    # Check if we should wait for Robot 1
+    wait_seconds = int(request.args.get("wait", "0"))
+    if wait_seconds > 0:
+        logger.info(f"Waiting {wait_seconds}s for Robot 1 to complete...")
+        time.sleep(wait_seconds)
+
     logger.info("Running Analysis Pipeline: Robots 3,8,7,4,5")
     result = run_robots("3,8,7,4,5")
     return jsonify(result), 200 if result["status"] == "success" else 500
