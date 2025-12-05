@@ -279,91 +279,85 @@ def save_news_to_sheet(news_items: List[NewsItem], ws) -> int:
         return 0
 
 
-def format_telegram_news(news_items: List[NewsItem]) -> str:
-    """Format news for Telegram message"""
-    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+def format_single_news(news: NewsItem, index: int, total: int) -> str:
+    """Format a single news item for Telegram"""
+    # Sentiment emoji
+    if news.sentiment_label == "Pozitif":
+        emoji = "📈"
+    elif news.sentiment_label == "Negatif":
+        emoji = "📉"
+    else:
+        emoji = "➡️"
 
-    # Group by impact
-    high_impact = [n for n in news_items if n.impact == "YÜKSEK"]
-    medium_impact = [n for n in news_items if n.impact == "ORTA"]
-    low_impact = [n for n in news_items if n.impact == "DÜŞÜK"]
+    # Impact emoji
+    if news.impact == "YÜKSEK":
+        impact_emoji = "🔴"
+    elif news.impact == "ORTA":
+        impact_emoji = "🟡"
+    else:
+        impact_emoji = "🟢"
+
+    markets = ", ".join(news.related_markets) if news.related_markets else "Genel"
 
     message = f"""━━━━━━━━━━━━━━━━━━━━━━
-📰 <b>PİYASA HABERLERİ</b>
+📰 <b>HABER {index}/{total}</b> {impact_emoji}
 ━━━━━━━━━━━━━━━━━━━━━━
-🕐 {now}
-"""
 
-    def format_news_item(news: NewsItem) -> str:
-        # Sentiment emoji
-        if news.sentiment_label == "Pozitif":
-            emoji = "📈"
-        elif news.sentiment_label == "Negatif":
-            emoji = "📉"
-        else:
-            emoji = "➡️"
+{emoji} <b>{news.title}</b>
 
-        markets = ", ".join(news.related_markets) if news.related_markets else "Genel"
-
-        return f"""
-{emoji} <b>{news.title[:100]}{'...' if len(news.title) > 100 else ''}</b>
-
-{news.turkish_summary[:300]}{'...' if len(news.turkish_summary) > 300 else ''}
+{news.turkish_summary}
 
 ├─ 📊 Etki: {news.impact}
 ├─ 🎯 Piyasalar: {markets}
 ├─ 📰 Kaynak: {news.source}
-└─ 🕐 {news.published_at.strftime("%H:%M")}
-"""
+└─ 🕐 {news.published_at.strftime("%d.%m.%Y %H:%M")}
 
-    if high_impact:
-        message += "\n🔴 <b>YÜKSEK ETKİ:</b>"
-        for news in high_impact[:3]:
-            message += format_news_item(news)
-
-    if medium_impact:
-        message += "\n🟡 <b>ORTA ETKİ:</b>"
-        for news in medium_impact[:4]:
-            message += format_news_item(news)
-
-    if low_impact and len(high_impact) + len(medium_impact) < 5:
-        message += "\n🟢 <b>DÜŞÜK ETKİ:</b>"
-        for news in low_impact[:3]:
-            message += format_news_item(news)
-
-    message += "\n━━━━━━━━━━━━━━━━━━━━━━"
+━━━━━━━━━━━━━━━━━━━━━━"""
 
     return message
 
 
 async def send_news_to_telegram(news_items: List[NewsItem], bot_token: str, chat_id: str) -> bool:
-    """Send news to Telegram with retry logic"""
+    """Send each news as separate message with 30 second delay"""
     if not news_items:
         logger.info("No news to send to Telegram")
         return True
 
     try:
         bot = Bot(token=bot_token)
-        message = format_telegram_news(news_items)
+        total = len(news_items)
+        sent_count = 0
 
-        # Retry logic
-        for attempt in range(3):
-            try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True
-                )
-                logger.info(f"✓ News sent to Telegram ({len(news_items)} items)")
-                return True
-            except Exception as e:
-                if attempt < 2:
-                    wait_time = 2 ** (attempt + 1)
-                    logger.warning(f"Telegram error (attempt {attempt + 1}/3), waiting {wait_time}s: {e}")
-                    await asyncio.sleep(wait_time)
-                else:
-                    raise
+        for i, news in enumerate(news_items, 1):
+            message = format_single_news(news, i, total)
+
+            # Retry logic for each message
+            for attempt in range(3):
+                try:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=message,
+                        parse_mode=ParseMode.HTML,
+                        disable_web_page_preview=True
+                    )
+                    sent_count += 1
+                    logger.info(f"✓ Haber {i}/{total} gönderildi: {news.title[:40]}...")
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        wait_time = 2 ** (attempt + 1)
+                        logger.warning(f"Telegram error (attempt {attempt + 1}/3), waiting {wait_time}s: {e}")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        logger.error(f"Failed to send news {i}: {e}")
+
+            # Wait 30 seconds between news (except for the last one)
+            if i < total:
+                logger.info(f"⏳ 30 saniye bekleniyor...")
+                await asyncio.sleep(30)
+
+        logger.info(f"✓ {sent_count}/{total} haber Telegram'a gönderildi")
+        return sent_count > 0
 
     except Exception as e:
         logger.error(f"Failed to send news to Telegram: {e}")
