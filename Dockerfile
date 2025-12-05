@@ -44,34 +44,29 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/lib/libta_lib.* /usr/lib/
 COPY --from=builder /usr/include/ta-lib/ /usr/include/ta-lib/
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
+# Create non-root user first
+RUN useradd -m -u 1000 appuser
 
-# Set PATH for Python packages
-ENV PATH=/root/.local/bin:$PATH
+# Copy Python packages from builder (to user-accessible location)
+COPY --from=builder /root/.local /home/appuser/.local
+RUN chown -R appuser:appuser /home/appuser/.local
+
+# Set PATH for Python packages and environment
+ENV PATH=/home/appuser/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
 
 # Create app directory
 WORKDIR /app
 
 # Copy application code
-COPY . .
+COPY --chown=appuser:appuser . .
 
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
-
-# Create non-root user for security (optional but recommended)
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
+# Switch to non-root user
 USER appuser
 
 # Expose port for Cloud Run
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
-
 # Default command - Run with gunicorn for production
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 2 --timeout 600 server:app
+CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "600", "server:app"]
