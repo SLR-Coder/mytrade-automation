@@ -177,6 +177,89 @@ def weekly_report():
         }), 500
 
 
+@app.route("/full-cycle", methods=["POST", "GET"])
+def full_cycle():
+    """
+    Full Cycle: Robot 1 → Wait → Analysis Pipeline
+
+    Used for daily reset at 03:00 TR (Tokyo market open).
+    Ensures fresh data collection before analysis.
+
+    Flow:
+    1. Run Robot 1 (data collection) - ~50 seconds
+    2. Wait 10 seconds buffer
+    3. Run Analysis Pipeline (3,8,7,4,5) - ~3-5 minutes
+
+    Total time: ~6 minutes
+    """
+    import time
+
+    logger.info("=" * 60)
+    logger.info("FULL CYCLE: Daily Reset Starting (03:00 TR)")
+    logger.info("=" * 60)
+
+    results = {
+        "cycle": "full",
+        "steps": [],
+        "timestamp": datetime.now().isoformat()
+    }
+
+    # Step 1: Run Robot 1 (Data Collection)
+    logger.info("Step 1/3: Running Robot 1 (Data Collection)...")
+    robot1_result = run_robots("1")
+    results["steps"].append({
+        "step": 1,
+        "name": "data-collection",
+        "robot": "1",
+        "status": robot1_result["status"],
+        "duration": robot1_result.get("duration_seconds", 0)
+    })
+
+    if robot1_result["status"] != "success":
+        logger.warning(f"Robot 1 had issues: {robot1_result.get('status')}")
+
+    # Step 2: Wait buffer (ensure data is written to Sheets)
+    buffer_seconds = 10
+    logger.info(f"Step 2/3: Waiting {buffer_seconds}s buffer...")
+    time.sleep(buffer_seconds)
+    results["steps"].append({
+        "step": 2,
+        "name": "buffer-wait",
+        "duration": buffer_seconds
+    })
+
+    # Step 3: Run Analysis Pipeline
+    logger.info("Step 3/3: Running Analysis Pipeline (Robots 3,8,7,4,5)...")
+    pipeline_result = run_robots("3,8,7,4,5")
+    results["steps"].append({
+        "step": 3,
+        "name": "analysis-pipeline",
+        "robots": "3,8,7,4,5",
+        "status": pipeline_result["status"],
+        "duration": pipeline_result.get("duration_seconds", 0)
+    })
+
+    # Calculate total duration
+    total_duration = sum(
+        step.get("duration", 0) for step in results["steps"]
+    )
+    results["total_duration_seconds"] = total_duration
+
+    # Determine overall status
+    all_success = all(
+        step.get("status", "success") == "success"
+        for step in results["steps"]
+        if "status" in step
+    )
+    results["status"] = "success" if all_success else "partial_failure"
+
+    logger.info("=" * 60)
+    logger.info(f"FULL CYCLE COMPLETE: {results['status']} ({total_duration:.1f}s)")
+    logger.info("=" * 60)
+
+    return jsonify(results), 200 if all_success else 500
+
+
 # This is important for Cloud Run
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
