@@ -534,6 +534,23 @@ def find_chart_for_market(market: str) -> Optional[str]:
         return None
 
 
+async def send_message_with_retry(bot: Bot, chat_id: str, text: str, max_retries: int = 3, **kwargs) -> bool:
+    """Send message with retry logic for transient errors"""
+    for attempt in range(max_retries):
+        try:
+            await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+            return True
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2, 4, 8 seconds
+                logger.warning(f"Telegram error (attempt {attempt + 1}/{max_retries}), waiting {wait_time}s: {e}")
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"Failed after {max_retries} attempts: {e}")
+                return False
+    return False
+
+
 async def send_signals_individually_async(bot_token: str, chat_id: str, signals: List[Dict], temporal_data: Dict = None, performance_data: Dict = None) -> bool:
     """
     Send overview + individual signal messages with charts
@@ -553,13 +570,17 @@ async def send_signals_individually_async(bot_token: str, chat_id: str, signals:
 
         # Send overview message
         overview = format_overview_message(signals)
-        await bot.send_message(
-            chat_id=chat_id,
-            text=overview,
+        success = await send_message_with_retry(
+            bot, chat_id, overview,
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True
         )
-        logger.info(f"✓ Overview message sent to Telegram")
+        if success:
+            logger.info(f"✓ Overview message sent to Telegram")
+        else:
+            logger.error(f"❌ Failed to send overview message")
+            return False
+
         await asyncio.sleep(2)
 
         # Send each signal + chart individually
@@ -571,38 +592,49 @@ async def send_signals_individually_async(bot_token: str, chat_id: str, signals:
             if temporal_data and signal['market'] in temporal_data:
                 temporal_trend = analyze_temporal_trend(temporal_data[signal['market']])
 
-            # Send signal message (with performance badge)
+            # Send signal message (with performance badge) - with retry
             message = format_single_signal(signal, i, temporal_trend, performance_data)
-            await bot.send_message(
-                chat_id=chat_id,
-                text=message,
+            success = await send_message_with_retry(
+                bot, chat_id, message,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True
             )
-            messages_sent += 1
-            logger.info(f"✓ Signal #{i} sent: {signal['market']}")
-            await asyncio.sleep(1)
+            if success:
+                messages_sent += 1
+                logger.info(f"✓ Signal #{i} sent: {signal['market']}")
+            else:
+                logger.warning(f"⚠ Failed to send signal #{i}: {signal['market']}")
+
+            await asyncio.sleep(1.5)  # Slightly longer delay between messages
 
             # Send chart if available
             if SEND_CHARTS:
                 chart_path = find_chart_for_market(signal['market'])
                 if chart_path:
                     try:
-                        with open(chart_path, 'rb') as chart_file:
-                            caption = f"📊 {signal['market']} Teknik Analiz"
-                            await bot.send_photo(
-                                chat_id=chat_id,
-                                photo=chart_file,
-                                caption=caption
-                            )
-                            charts_sent += 1
-                            logger.info(f"✓ Chart sent for {signal['market']}")
-                            await asyncio.sleep(1)
+                        for attempt in range(3):
+                            try:
+                                with open(chart_path, 'rb') as chart_file:
+                                    caption = f"📊 {signal['market']} Teknik Analiz"
+                                    await bot.send_photo(
+                                        chat_id=chat_id,
+                                        photo=chart_file,
+                                        caption=caption
+                                    )
+                                    charts_sent += 1
+                                    logger.info(f"✓ Chart sent for {signal['market']}")
+                                    break
+                            except Exception as e:
+                                if attempt < 2:
+                                    await asyncio.sleep(2 ** (attempt + 1))
+                                else:
+                                    logger.warning(f"Failed to send chart for {signal['market']}: {e}")
+                        await asyncio.sleep(1.5)
                     except Exception as e:
                         logger.warning(f"Failed to send chart for {signal['market']}: {e}")
 
         logger.info(f"✓ Sent {messages_sent} signal messages and {charts_sent} charts")
-        return True
+        return messages_sent > 0  # Success if at least one message was sent
 
     except Exception as e:
         logger.error(f"Failed to send Telegram messages: {e}")
