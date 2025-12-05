@@ -7,6 +7,7 @@ Receives HTTP requests and triggers appropriate robots
 
 import os
 import sys
+import subprocess
 import logging
 from datetime import datetime
 from flask import Flask, request, jsonify
@@ -59,16 +60,7 @@ def run_robots(robot_ids: str) -> dict:
     start_time = datetime.now()
 
     try:
-        # Set robot selection environment variable
-        os.environ["ROBOT"] = robot_ids
-
-        # Import main module
-        import importlib
-        import main
-        importlib.reload(main)  # Reload to pick up new env var
-
-        # Run using subprocess to avoid event loop issues
-        import subprocess
+        # Run using subprocess to avoid thread/signal issues
         result = subprocess.run(
             [sys.executable, "main.py", robot_ids],
             capture_output=True,
@@ -151,7 +143,6 @@ def weekly_report():
     """Weekly Telegram Report"""
     logger.info("Running Weekly Report")
     try:
-        import subprocess
         result = subprocess.run(
             [sys.executable, "-c", "from robots import weekly_telegram_report; weekly_telegram_report.run()"],
             capture_output=True,
