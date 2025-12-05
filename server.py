@@ -7,58 +7,18 @@ Receives HTTP requests and triggers appropriate robots
 
 import os
 import sys
-import asyncio
 import logging
 from datetime import datetime
 from flask import Flask, request, jsonify
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Setup logging BEFORE any imports that might use it
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("MyTrade-Server")
 
 app = Flask(__name__)
-
-
-def run_robots(robot_ids: str) -> dict:
-    """
-    Run specified robots
-
-    Args:
-        robot_ids: Comma-separated robot IDs (e.g., "1,2,3")
-
-    Returns:
-        Result dictionary with status and details
-    """
-    start_time = datetime.now()
-
-    try:
-        # Import and run main with robot selection
-        from main import main_async
-
-        # Set robot selection
-        os.environ["ROBOT"] = robot_ids
-
-        # Run async main
-        result = asyncio.run(main_async())
-
-        duration = (datetime.now() - start_time).total_seconds()
-
-        return {
-            "status": "success" if result == 0 else "partial_failure",
-            "robots": robot_ids,
-            "exit_code": result,
-            "duration_seconds": duration,
-            "timestamp": datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        logger.error(f"Error running robots {robot_ids}: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "robots": robot_ids,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
 
 
 @app.route("/", methods=["GET"])
@@ -71,17 +31,13 @@ def health():
     })
 
 
-@app.route("/run", methods=["POST"])
+@app.route("/run", methods=["POST", "GET"])
 def run_endpoint():
     """
     Run robots endpoint
 
     Query params:
         robots: Comma-separated robot IDs (e.g., "1,2,3" or "3,8,7,4,5")
-
-    Example:
-        POST /run?robots=1
-        POST /run?robots=3,8,7,4,5
     """
     robots = request.args.get("robots", "")
 
@@ -98,8 +54,59 @@ def run_endpoint():
     return jsonify(result), status_code
 
 
+def run_robots(robot_ids: str) -> dict:
+    """Run specified robots"""
+    start_time = datetime.now()
+
+    try:
+        # Set robot selection environment variable
+        os.environ["ROBOT"] = robot_ids
+
+        # Import main module
+        import importlib
+        import main
+        importlib.reload(main)  # Reload to pick up new env var
+
+        # Run using subprocess to avoid event loop issues
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "main.py", robot_ids],
+            capture_output=True,
+            text=True,
+            timeout=540  # 9 minutes max
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+
+        return {
+            "status": "success" if result.returncode == 0 else "partial_failure",
+            "robots": robot_ids,
+            "exit_code": result.returncode,
+            "duration_seconds": duration,
+            "stdout": result.stdout[-2000:] if result.stdout else "",  # Last 2000 chars
+            "stderr": result.stderr[-1000:] if result.stderr else "",
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "timeout",
+            "robots": robot_ids,
+            "error": "Execution timed out after 9 minutes",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error running robots {robot_ids}: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "robots": robot_ids,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
 # Specific endpoints for each job type
-@app.route("/data-collection", methods=["POST"])
+@app.route("/data-collection", methods=["POST", "GET"])
 def data_collection():
     """Robot 1: Data Collection"""
     logger.info("Running Robot 1: Data Collection")
@@ -107,7 +114,7 @@ def data_collection():
     return jsonify(result), 200 if result["status"] == "success" else 500
 
 
-@app.route("/news-monitor", methods=["POST"])
+@app.route("/news-monitor", methods=["POST", "GET"])
 def news_monitor():
     """Robot 2: News Monitor"""
     logger.info("Running Robot 2: News Monitor")
@@ -115,7 +122,7 @@ def news_monitor():
     return jsonify(result), 200 if result["status"] == "success" else 500
 
 
-@app.route("/analysis-pipeline", methods=["POST"])
+@app.route("/analysis-pipeline", methods=["POST", "GET"])
 def analysis_pipeline():
     """Robots 3,8,7,4,5: Full Analysis Pipeline"""
     logger.info("Running Analysis Pipeline: Robots 3,8,7,4,5")
@@ -123,7 +130,7 @@ def analysis_pipeline():
     return jsonify(result), 200 if result["status"] == "success" else 500
 
 
-@app.route("/tp-sl-monitor", methods=["POST"])
+@app.route("/tp-sl-monitor", methods=["POST", "GET"])
 def tp_sl_monitor():
     """Robot 9: TP/SL Monitor"""
     logger.info("Running Robot 9: TP/SL Monitor")
@@ -131,7 +138,7 @@ def tp_sl_monitor():
     return jsonify(result), 200 if result["status"] == "success" else 500
 
 
-@app.route("/performance-tracker", methods=["POST"])
+@app.route("/performance-tracker", methods=["POST", "GET"])
 def performance_tracker():
     """Robot 6: Performance Tracker"""
     logger.info("Running Robot 6: Performance Tracker")
@@ -139,18 +146,24 @@ def performance_tracker():
     return jsonify(result), 200 if result["status"] == "success" else 500
 
 
-@app.route("/weekly-report", methods=["POST"])
+@app.route("/weekly-report", methods=["POST", "GET"])
 def weekly_report():
     """Weekly Telegram Report"""
     logger.info("Running Weekly Report")
     try:
-        from robots import weekly_telegram_report
-        weekly_telegram_report.run()
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-c", "from robots import weekly_telegram_report; weekly_telegram_report.run()"],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
         return jsonify({
-            "status": "success",
+            "status": "success" if result.returncode == 0 else "error",
             "job": "weekly-report",
+            "stdout": result.stdout[-1000:] if result.stdout else "",
             "timestamp": datetime.now().isoformat()
-        }), 200
+        }), 200 if result.returncode == 0 else 500
     except Exception as e:
         logger.error(f"Weekly report error: {e}", exc_info=True)
         return jsonify({
@@ -159,7 +172,9 @@ def weekly_report():
         }), 500
 
 
+# This is important for Cloud Run
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    logger.info(f"Starting server on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    logger.info(f"Starting MyTrade server on port {port}")
+    # Use threaded=True for better concurrency
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
