@@ -262,6 +262,9 @@ def read_latest_signals(ws, cols) -> List[Dict]:
             except:
                 risk_reward = None
 
+            # Get chart URL from BT column (GCS URL from Robot 4)
+            chart_url = row[cols.BT - 1] if len(row) > cols.BT - 1 else ""
+
             signals.append({
                 "row_index": row_index,
                 "market": market,
@@ -285,7 +288,8 @@ def read_latest_signals(ws, cols) -> List[Dict]:
                 "stop_loss": stop_loss,
                 "take_profit_1": take_profit_1,
                 "take_profit_2": take_profit_2,
-                "risk_reward": risk_reward
+                "risk_reward": risk_reward,
+                "chart_url": chart_url
             })
 
         except Exception as e:
@@ -607,23 +611,37 @@ async def send_signals_individually_async(bot_token: str, chat_id: str, signals:
 
             await asyncio.sleep(1.5)  # Slightly longer delay between messages
 
-            # Send chart if available
+            # Send chart if available (prefer GCS URL, fallback to local file)
             if SEND_CHARTS:
-                chart_path = find_chart_for_market(signal['market'])
-                if chart_path:
+                chart_url = signal.get('chart_url', '')
+                chart_path = find_chart_for_market(signal['market']) if not chart_url else None
+
+                if chart_url or chart_path:
                     try:
                         for attempt in range(3):
                             try:
-                                with open(chart_path, 'rb') as chart_file:
-                                    caption = f"📊 {signal['market']} Teknik Analiz"
+                                caption = f"📊 {signal['market']} Teknik Analiz"
+
+                                if chart_url:
+                                    # Send GCS URL directly (preferred)
                                     await bot.send_photo(
                                         chat_id=chat_id,
-                                        photo=chart_file,
+                                        photo=chart_url,
                                         caption=caption
                                     )
                                     charts_sent += 1
-                                    logger.info(f"✓ Chart sent for {signal['market']}")
-                                    break
+                                    logger.info(f"✓ Chart sent for {signal['market']} (GCS URL)")
+                                else:
+                                    # Fallback to local file
+                                    with open(chart_path, 'rb') as chart_file:
+                                        await bot.send_photo(
+                                            chat_id=chat_id,
+                                            photo=chart_file,
+                                            caption=caption
+                                        )
+                                        charts_sent += 1
+                                        logger.info(f"✓ Chart sent for {signal['market']} (local file)")
+                                break
                             except Exception as e:
                                 if attempt < 2:
                                     await asyncio.sleep(2 ** (attempt + 1))
@@ -696,12 +714,14 @@ def run():
         if SEND_CHARTS and filtered_signals:
             signals_with_charts = []
             for signal in filtered_signals:
-                chart_path = find_chart_for_market(signal['market'])
-                if chart_path:
+                # Check for GCS URL first (BT column), then local file
+                chart_url = signal.get('chart_url', '')
+                chart_path = find_chart_for_market(signal['market']) if not chart_url else None
+                if chart_url or chart_path:
                     signals_with_charts.append(signal)
 
             if signals_with_charts:
-                logger.info(f"Found {len(signals_with_charts)}/{len(filtered_signals)} signals with charts")
+                logger.info(f"Found {len(signals_with_charts)}/{len(filtered_signals)} signals with charts (GCS or local)")
                 filtered_signals = signals_with_charts
             else:
                 logger.warning("No signals have charts available, sending all filtered signals")
