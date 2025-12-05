@@ -19,6 +19,14 @@ from utils.schema import resolve_columns
 from utils.common import status_text, parse_float, is_ready_for_analysis  # DRY: Import from common
 from utils.api_clients import BinanceClient, PolygonClient
 
+# Google Cloud Storage for chart uploads
+try:
+    from google.cloud import storage
+    GCS_AVAILABLE = True
+except ImportError:
+    GCS_AVAILABLE = False
+    storage = None
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-4-ChartGenerator")
 
@@ -33,6 +41,59 @@ def ensure_chart_dir():
     """Ensure chart directory exists"""
     Path(CHART_DIR).mkdir(parents=True, exist_ok=True)
     logger.info(f"Chart directory: {CHART_DIR}")
+
+
+def upload_chart_to_gcs(local_path: str, market: str) -> Optional[str]:
+    """
+    Upload chart to Google Cloud Storage and return public URL
+
+    Args:
+        local_path: Local file path of the chart
+        market: Market symbol (used for naming)
+
+    Returns:
+        Public URL of the uploaded chart, or None if failed
+    """
+    if not GCS_AVAILABLE:
+        logger.warning("Google Cloud Storage not available (install google-cloud-storage)")
+        return None
+
+    try:
+        # Get bucket name from environment or use default
+        bucket_name = os.getenv("GCS_BUCKET_NAME", "mytrade-charts")
+
+        # Initialize GCS client
+        client = storage.Client()
+
+        # Get or create bucket
+        try:
+            bucket = client.get_bucket(bucket_name)
+        except Exception:
+            # Create bucket if not exists
+            bucket = client.create_bucket(bucket_name, location="us-central1")
+            logger.info(f"Created GCS bucket: {bucket_name}")
+
+        # Generate blob name with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_market = market.replace("/", "_").replace(" ", "_")
+        blob_name = f"charts/{safe_market}_{timestamp}.png"
+
+        # Upload file
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(local_path)
+
+        # Make public
+        blob.make_public()
+
+        public_url = blob.public_url
+        logger.info(f"✓ Chart uploaded to GCS: {public_url}")
+
+        return public_url
+
+    except Exception as e:
+        logger.error(f"Failed to upload chart to GCS: {e}")
+        return None
 
 
 def read_latest_signals(ws, cols) -> List[Dict]:
@@ -330,7 +391,7 @@ def run():
 
         successful = 0
         failed = 0
-        processed_rows = []  # Track successfully processed rows for status update
+        chart_results = []  # Track row_index and chart_url pairs
 
         for signal in high_confidence_signals:
             try:
@@ -346,8 +407,14 @@ def run():
                 chart_path = create_chart(signal['market'], df, signal)
 
                 if chart_path:
+                    # Upload to GCS and get public URL
+                    chart_url = upload_chart_to_gcs(chart_path, signal['market'])
+
                     successful += 1
-                    processed_rows.append(signal['row_index'])  # Track for status update
+                    chart_results.append({
+                        'row_index': signal['row_index'],
+                        'chart_url': chart_url or chart_path  # Fallback to local path if GCS fails
+                    })
                 else:
                     failed += 1
 
@@ -359,19 +426,31 @@ def run():
                 failed += 1
                 continue
 
-        # Update Robot 4 status in Google Sheets (BN column)
-        if processed_rows:
-            logger.info("Updating Robot 4 status in Google Sheets...")
+        # Update Google Sheets: Chart URL (BD) and Robot 4 status (BN)
+        if chart_results:
+            logger.info("Updating Google Sheets with chart URLs...")
             updated = 0
-            for row_idx in processed_rows:
+            for result in chart_results:
                 try:
+                    row_idx = result['row_index']
+                    chart_url = result['chart_url']
+
+                    # Write chart URL to BD column (Grafik URL)
+                    if chart_url and chart_url.startswith('http'):
+                        ws.update_cell(row_idx, cols.BD, chart_url)
+                        logger.info(f"  Row {row_idx}: Chart URL written to BD")
+
+                    # Update Robot 4 status (BN column)
                     ws.update_cell(row_idx, cols.BN, status_text(4, True))
                     updated += 1
+
+                    time.sleep(0.3)  # Rate limiting for Sheets API
+
                 except Exception as e:
-                    logger.warning(f"Failed to update status for row {row_idx}: {e}")
+                    logger.warning(f"Failed to update row {row_idx}: {e}")
                     continue
 
-            logger.info(f"✓ Updated {updated}/{len(processed_rows)} rows with Robot 4 ✅")
+            logger.info(f"✓ Updated {updated}/{len(chart_results)} rows with Chart URL + Robot 4 ✅")
 
         # Summary
         logger.info("=" * 60)
