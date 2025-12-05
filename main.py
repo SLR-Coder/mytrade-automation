@@ -201,7 +201,7 @@ async def main_async():
 
         if "2" in robot_select and not shutdown_requested:
             from robots import news_analyzer
-            results["Robot 2: News Analyzer"] = await run_async_robot(
+            results["Robot 2: News Analyzer"] = run_sync_robot(
                 news_analyzer,
                 "Robot 2: News Analyzer"
             )
