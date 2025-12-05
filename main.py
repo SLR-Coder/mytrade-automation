@@ -61,47 +61,34 @@ async def run_async_robot(robot_module, robot_name: str, max_retries: int = 2) -
 
     Returns:
         bool: Success status
+
+    Note: Only sends Telegram notification on FAILURE (no spam for start/complete)
     """
     for attempt in range(max_retries + 1):
         try:
             logger.info(f"🤖 {robot_name} çalıştırılıyor... (deneme {attempt + 1}/{max_retries + 1})")
 
-            # Send start notification (only on first attempt)
-            if attempt == 0:
-                try:
-                    await send_robot_progress(robot_name, "STARTED")
-                except:
-                    pass
-
             await robot_module.run()
 
             logger.info(f"✅ {robot_name} başarıyla tamamlandı")
-
-            # Send completion notification
-            try:
-                await send_robot_progress(robot_name, "COMPLETED")
-            except:
-                pass
-
             return True
 
         except Exception as e:
             logger.error(f"❌ {robot_name} başarısız: {e}", exc_info=True)
 
-            # Send Telegram notification on error
-            try:
-                await send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}")
-            except:
-                pass
-
-            # Retry logic
-            if attempt < max_retries:
-                wait_time = 2 ** attempt  # Exponential backoff
-                logger.info(f"⏳ {robot_name} {wait_time}s içinde tekrar deneniyor...")
-                await asyncio.sleep(wait_time)
-            else:
+            # Only send Telegram notification on FINAL failure (no spam)
+            if attempt >= max_retries:
+                try:
+                    await send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}")
+                except:
+                    pass
                 logger.error(f"💥 {robot_name} {max_retries + 1} denemeden sonra başarısız oldu")
                 return False
+
+            # Retry logic
+            wait_time = 2 ** attempt  # Exponential backoff
+            logger.info(f"⏳ {robot_name} {wait_time}s içinde tekrar deneniyor...")
+            await asyncio.sleep(wait_time)
 
     return False
 
@@ -117,63 +104,40 @@ def run_sync_robot(robot_module, robot_name: str, max_retries: int = 2) -> bool:
 
     Returns:
         bool: Success status
+
+    Note: Only sends Telegram notification on FAILURE (no spam for start/complete)
     """
     for attempt in range(max_retries + 1):
         try:
             logger.info(f"🤖 {robot_name} çalıştırılıyor... (deneme {attempt + 1}/{max_retries + 1})")
 
-            # Send start notification (only on first attempt)
-            if attempt == 0:
+            robot_module.run()
+
+            logger.info(f"✅ {robot_name} başarıyla tamamlandı")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ {robot_name} başarısız: {e}", exc_info=True)
+
+            # Only send Telegram notification on FINAL failure (no spam)
+            if attempt >= max_retries:
                 try:
                     import asyncio
-                    coro = send_robot_progress(robot_name, "STARTED")
+                    coro = send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}")
                     asyncio.run(coro)
                 except Exception:
                     try:
                         coro.close()
                     except:
                         pass
-
-            robot_module.run()
-
-            logger.info(f"✅ {robot_name} başarıyla tamamlandı")
-
-            # Send completion notification
-            try:
-                import asyncio
-                coro = send_robot_progress(robot_name, "COMPLETED")
-                asyncio.run(coro)
-            except Exception:
-                try:
-                    coro.close()
-                except:
-                    pass
-
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ {robot_name} başarısız: {e}", exc_info=True)
-
-            # Send Telegram notification on error
-            try:
-                import asyncio
-                coro = send_robot_progress(robot_name, "FAILED", f"Hata: {str(e)[:100]}")
-                asyncio.run(coro)
-            except Exception:
-                try:
-                    coro.close()
-                except:
-                    pass
-
-            # Retry logic
-            if attempt < max_retries:
-                wait_time = 2 ** attempt
-                logger.info(f"⏳ {robot_name} {wait_time}s içinde tekrar deneniyor...")
-                import time
-                time.sleep(wait_time)
-            else:
                 logger.error(f"💥 {robot_name} {max_retries + 1} denemeden sonra başarısız oldu")
                 return False
+
+            # Retry logic
+            wait_time = 2 ** attempt
+            logger.info(f"⏳ {robot_name} {wait_time}s içinde tekrar deneniyor...")
+            import time
+            time.sleep(wait_time)
 
     return False
 
@@ -211,11 +175,8 @@ async def main_async():
     logger.info("=" * 70)
     logger.info(f"⏰ Başlangıç: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Send start notification
-    try:
-        await send_status_notification("🚀 MyTrade otomasyonu başlatıldı")
-    except:
-        pass
+    # NOTE: Start notification removed to reduce Telegram spam
+    # Only send notifications on FAILURE
 
     # Get robot selection from command-line args or environment
     if len(sys.argv) > 1:
@@ -328,16 +289,8 @@ async def main_async():
 
         logger.info("=" * 70)
 
-        # Send completion notification
-        try:
-            status_emoji = "✅" if failed == 0 else "⚠️"
-            await send_status_notification(
-                f"{status_emoji} Otomasyon tamamlandı\n"
-                f"Başarılı: {successful}/{len(results)}\n"
-                f"Süre: {duration:.1f}s"
-            )
-        except:
-            pass
+        # NOTE: Completion notification removed to reduce Telegram spam
+        # Only send notifications on FAILURE
 
         return 0 if failed == 0 else 1
 
