@@ -412,7 +412,7 @@ def run():
 
         all_news: List[NewsItem] = []
 
-        # Fetch and analyze news
+        # Fetch and analyze news (sentiment only - no Turkish translation yet)
         for category, query in queries.items():
             logger.info(f"\n📰 Fetching {category} news...")
 
@@ -436,20 +436,17 @@ def run():
                     if any(n.title == title for n in all_news):
                         continue
 
-                    # Analyze sentiment
+                    # Analyze sentiment ONLY (save AI calls - no Turkish translation yet)
                     sentiment = analyzer.analyze_sentiment(title, description)
 
-                    # Generate Turkish summary
-                    turkish_summary = analyzer.generate_turkish_summary(title, description)
-
-                    # Determine related markets
+                    # Determine related markets (no AI needed)
                     related_markets = analyzer.determine_related_markets(title, description)
 
                     news_item = NewsItem(
                         published_at=published_at,
                         title=title,
                         summary=description[:200] if description else "",
-                        turkish_summary=turkish_summary,
+                        turkish_summary="",  # Will be filled later for top 10 only
                         source=source,
                         url=url,
                         sentiment_score=sentiment["sentiment_score"],
@@ -467,7 +464,7 @@ def run():
                     )
 
                     # Rate limiting for Gemini
-                    time.sleep(0.5)
+                    time.sleep(0.3)
 
                 except Exception as e:
                     logger.warning(f"Failed to process article: {e}")
@@ -477,11 +474,17 @@ def run():
         impact_order = {"YÜKSEK": 0, "ORTA": 1, "DÜŞÜK": 2}
         all_news.sort(key=lambda x: (impact_order.get(x.impact, 1), -x.published_at.timestamp()))
 
-        # Save to Google Sheets
-        saved = save_news_to_sheet(all_news, news_ws)
-
-        # Send to Telegram (top news only)
+        # Generate Turkish summaries ONLY for top 10 (save AI calls!)
         top_news = all_news[:MAX_TELEGRAM_NEWS]
+        logger.info(f"\n🇹🇷 Generating Turkish summaries for top {len(top_news)} news...")
+        for news in top_news:
+            news.turkish_summary = analyzer.generate_turkish_summary(news.title, news.summary)
+            time.sleep(0.3)
+
+        # Save ONLY top 10 to Google Sheets (the ones with Turkish summaries)
+        saved = save_news_to_sheet(top_news, news_ws)
+
+        # Send to Telegram
         if top_news:
             asyncio.run(send_news_to_telegram(top_news, telegram_token, telegram_chat_id))
 
@@ -489,11 +492,12 @@ def run():
         logger.info("")
         logger.info("=" * 60)
         logger.info(f"✅ ROBOT 2 TAMAMLANDI!")
-        logger.info(f"  📰 Toplam haber: {len(all_news)}")
+        logger.info(f"  📰 Toplam haber çekildi: {len(all_news)}")
+        logger.info(f"  🇹🇷 Türkçeye çevrilen: {len(top_news)}")
         logger.info(f"  💾 Sheet'e kaydedilen: {saved}")
         logger.info(f"  📱 Telegram'a gönderilen: {len(top_news)}")
-        logger.info(f"  🔴 Yüksek etki: {len([n for n in all_news if n.impact == 'YÜKSEK'])}")
-        logger.info(f"  🟡 Orta etki: {len([n for n in all_news if n.impact == 'ORTA'])}")
+        logger.info(f"  🔴 Yüksek etki: {len([n for n in top_news if n.impact == 'YÜKSEK'])}")
+        logger.info(f"  🟡 Orta etki: {len([n for n in top_news if n.impact == 'ORTA'])}")
         logger.info("=" * 60)
 
     except Exception as e:
