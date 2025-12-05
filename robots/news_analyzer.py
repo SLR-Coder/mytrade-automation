@@ -407,13 +407,13 @@ def run():
         except Exception as e:
             logger.warning(f"Could not read existing news: {e}")
 
-        # Define search queries
+        # Define search queries - MORE SPECIFIC for financial markets
         queries = {
-            "crypto": "bitcoin OR ethereum OR cryptocurrency",
-            "forex": "forex OR USD OR EUR OR central bank OR interest rate",
-            "commodities": "gold price OR oil price OR commodities",
-            "stocks": "stock market OR S&P 500 OR NASDAQ OR earnings",
-            "turkey": "Turkey economy OR Turkish lira OR TCMB"
+            "crypto": "bitcoin price OR ethereum price OR crypto market OR BTC OR ETH",
+            "forex": "EUR USD OR dollar index OR forex market OR currency trading OR Fed rate",
+            "commodities": "gold price OR silver price OR crude oil OR XAU OR commodity market",
+            "stocks": "S&P 500 OR NASDAQ OR stock market crash OR rally OR earnings report",
+            "turkey": "Turkish lira OR USD TRY OR TCMB OR Turkey inflation OR Borsa Istanbul"
         }
 
         all_news: List[NewsItem] = []
@@ -448,6 +448,11 @@ def run():
 
                     # Analyze sentiment ONLY (save AI calls - no Turkish translation yet)
                     sentiment = analyzer.analyze_sentiment(title, description)
+
+                    # Skip DÜŞÜK impact news - only keep YÜKSEK and ORTA
+                    if sentiment["impact"] == "DÜŞÜK":
+                        logger.info(f"  ⏭ Atlandı (düşük etki): {title[:40]}...")
+                        continue
 
                     # Determine related markets (no AI needed)
                     related_markets = analyzer.determine_related_markets(title, description)
