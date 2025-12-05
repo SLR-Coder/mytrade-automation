@@ -395,6 +395,18 @@ def run():
                 "Duyarlılık", "Etki", "İlgili Piyasalar", "Türkçe Özet", "URL"
             ])
 
+        # Get existing news titles to avoid duplicates
+        existing_titles = set()
+        try:
+            all_rows = news_ws.get_all_values()
+            if len(all_rows) > 1:  # Skip header
+                for row in all_rows[1:]:
+                    if len(row) > 1 and row[1]:  # Column B = Başlık
+                        existing_titles.add(row[1][:100])  # First 100 chars for matching
+            logger.info(f"📋 Sheet'te {len(existing_titles)} mevcut haber var (duplikasyon kontrolü)")
+        except Exception as e:
+            logger.warning(f"Could not read existing news: {e}")
+
         # Define search queries
         queries = {
             "crypto": "bitcoin OR ethereum OR cryptocurrency",
@@ -426,8 +438,12 @@ def run():
                     except:
                         published_at = datetime.now(timezone.utc)
 
-                    # Skip old or duplicate news
+                    # Skip duplicate news (already in Sheet or already processed)
                     if any(n.title == title for n in all_news):
+                        continue
+
+                    # Skip news already in Sheet (from previous runs)
+                    if title[:100] in existing_titles:
                         continue
 
                     # Analyze sentiment ONLY (save AI calls - no Turkish translation yet)
@@ -464,21 +480,27 @@ def run():
                     logger.warning(f"Failed to process article: {e}")
                     continue
 
+        # Check if we have any new news
+        if not all_news:
+            logger.info("\n✅ Yeni haber yok - tüm haberler zaten işlenmiş")
+            logger.info("=" * 60)
+            return
+
         # Sort by impact and time
         impact_order = {"YÜKSEK": 0, "ORTA": 1, "DÜŞÜK": 2}
         all_news.sort(key=lambda x: (impact_order.get(x.impact, 1), -x.published_at.timestamp()))
 
         # Generate Turkish summaries ONLY for top 10 (save AI calls!)
         top_news = all_news[:MAX_TELEGRAM_NEWS]
-        logger.info(f"\n🇹🇷 Generating Turkish summaries for top {len(top_news)} news...")
+        logger.info(f"\n🇹🇷 Generating Turkish summaries for {len(top_news)} NEW news...")
         for news in top_news:
             news.turkish_summary = analyzer.generate_turkish_summary(news.title, news.summary)
             time.sleep(0.3)
 
-        # Save ONLY top 10 to Google Sheets (the ones with Turkish summaries)
+        # Save ONLY top news to Google Sheets (the ones with Turkish summaries)
         saved = save_news_to_sheet(top_news, news_ws)
 
-        # Send to Telegram
+        # Send to Telegram (only if we have new news)
         if top_news:
             asyncio.run(send_news_to_telegram(top_news, telegram_token, telegram_chat_id))
 
