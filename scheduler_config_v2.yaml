@@ -40,15 +40,16 @@ data_collection:
     DATA_ONLY: "true"
 
 # Robot 2: News Monitor
-# Runs every 5 minutes for breaking news
+# Runs every 1 HOUR for market news (changed from 5 min)
+# Analyzes YÜKSEK and ORTA impact news only
 news_monitor:
-  schedule: "*/5 * * * *"
+  schedule: "0 * * * *"
   timezone: "UTC"
-  description: "Robot 2: Monitor crypto/forex news and send urgent alerts"
+  description: "Robot 2: Monitor crypto/forex/commodities news every hour"
   script: "/app/scripts/run_news_monitor.sh"
   env_vars:
     ROBOT: "2"
-    SEND_URGENT_ONLY: "true"
+    NEWS_LOOKBACK_HOURS: "2"
 
 # =============================================================================
 # 30-MINUTE ANALYSIS PIPELINE (Full AI Analysis)
@@ -136,27 +137,29 @@ health_check:
 # =============================================================================
 #
 # Every 3 minutes:  Robot 9 (TP/SL Monitor)
-# Every 5 minutes:  Robot 1 (Data Collector), Robot 2 (News Monitor)
+# Every 5 minutes:  Robot 1 (Data Collector)
 # Every 10 minutes: Health Check
 # Every 30 minutes: Analysis Pipeline (Robots 3,8,7,4,6,5)
+# Every 1 hour:     Robot 2 (News Monitor) - at :00 of each hour
 # Every Sunday:     Robot 6 (Weekly Report)
 #
-# Example Timeline (30 minutes):
-# T=00:00 → Pipeline runs (3,8,7,4,6,5) - uses data from T-30 to T-00
-# T=00:03 → Robot 9
-# T=00:05 → Robot 1, Robot 2
+# Example Timeline (1 hour):
+# T=00:00 → Robot 2 (News) + Pipeline (3,8,7,4,6,5)
+# T=00:03 → Robot 9 (TP/SL)
+# T=00:05 → Robot 1 (Data)
 # T=00:06 → Robot 9
 # T=00:09 → Robot 9
-# T=00:10 → Robot 1, Robot 2, Health Check
+# T=00:10 → Robot 1, Health Check
 # T=00:12 → Robot 9
-# T=00:15 → Robot 1, Robot 2, Robot 9
+# T=00:15 → Robot 1, Robot 9
 # T=00:18 → Robot 9
-# T=00:20 → Robot 1, Robot 2, Health Check
+# T=00:20 → Robot 1, Health Check
 # T=00:21 → Robot 9
 # T=00:24 → Robot 9
-# T=00:25 → Robot 1, Robot 2
+# T=00:25 → Robot 1
 # T=00:27 → Robot 9
-# T=00:30 → Pipeline runs again (3,8,7,4,6,5) - uses data from T-00 to T-30
+# T=00:30 → Pipeline (3,8,7,4,6,5)
+# T=01:00 → Robot 2 (News) + Pipeline (3,8,7,4,6,5)
 #
 # =============================================================================
 
@@ -183,13 +186,13 @@ health_check:
 #      --time-zone="UTC" \
 #      --description="Robot 1: Data collection every 5 minutes"
 #
-#    # News Monitor (Robot 2)
+#    # News Monitor (Robot 2) - Every 1 hour
 #    gcloud scheduler jobs create http news-monitor \
-#      --schedule="*/5 * * * *" \
+#      --schedule="0 * * * *" \
 #      --uri="https://YOUR_CLOUD_RUN_URL/run_script?script=run_news_monitor.sh" \
 #      --http-method=POST \
 #      --time-zone="UTC" \
-#      --description="Robot 2: News monitoring every 5 minutes"
+#      --description="Robot 2: News monitoring every hour"
 #
 #    # Analysis Pipeline (Robots 3,8,7,4,6,5)
 #    gcloud scheduler jobs create http analysis-pipeline \
@@ -264,12 +267,12 @@ health_check:
 #
 # Execution frequency per month:
 # - Data collection: 8,640 runs (every 5 min)
-# - News monitor: 8,640 runs (every 5 min)
+# - News monitor: 720 runs (every 1 hour)
 # - Analysis pipeline: 1,440 runs (every 30 min)
 # - TP/SL monitor: 14,400 runs (every 3 min)
 # - Weekly report: 4 runs (once per week)
 #
-# Total: ~33,000 scheduled executions per month
+# Total: ~25,200 scheduled executions per month
 #
 # Cloud Run pricing will depend on:
 # - CPU allocation (0.5-2 vCPU recommended)

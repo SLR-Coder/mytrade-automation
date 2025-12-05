@@ -1,0 +1,46 @@
+# MyTrade Automation Crontab Configuration
+# Install with: crontab scripts/crontab.txt
+# View with: crontab -l
+# All times in UTC
+
+# =============================================================================
+# DATA COLLECTION (Robot 1) - Every 5 minutes
+# =============================================================================
+*/5 * * * * cd /home/user/mytrade-automation && python main.py 1 >> /var/log/mytrade/robot1.log 2>&1
+
+# =============================================================================
+# NEWS MONITOR (Robot 2) - Every 1 hour at :00
+# =============================================================================
+0 * * * * cd /home/user/mytrade-automation && python main.py 2 >> /var/log/mytrade/robot2.log 2>&1
+
+# =============================================================================
+# AI ANALYSIS PIPELINE (Robots 3, 8, 7, 4, 5) - Every 30 minutes
+# Order: Robot 3 + 8 (parallel) -> Robot 7 -> Robot 4 -> Robot 5
+# =============================================================================
+*/30 * * * * cd /home/user/mytrade-automation && python main.py 3,8,7,4,5 >> /var/log/mytrade/pipeline.log 2>&1
+
+# =============================================================================
+# TP/SL MONITOR (Robot 9) - Every 3 minutes
+# =============================================================================
+*/3 * * * * cd /home/user/mytrade-automation && python main.py 9 >> /var/log/mytrade/robot9.log 2>&1
+
+# =============================================================================
+# PERFORMANCE TRACKER (Robot 6) - Daily at 23:00 UTC
+# =============================================================================
+0 23 * * * cd /home/user/mytrade-automation && python main.py 6 >> /var/log/mytrade/robot6.log 2>&1
+
+# =============================================================================
+# WEEKLY REPORT - Sunday at 00:00 UTC
+# =============================================================================
+0 0 * * 0 cd /home/user/mytrade-automation && python robots/weekly_telegram_report.py >> /var/log/mytrade/weekly.log 2>&1
+
+# =============================================================================
+# EXECUTION SUMMARY
+# =============================================================================
+# Every 3 min:  Robot 9 (TP/SL Monitor)
+# Every 5 min:  Robot 1 (Data Collection)
+# Every 30 min: Pipeline (Robots 3, 8, 7, 4, 5)
+# Every 1 hour: Robot 2 (News) - at :00
+# Daily 23:00:  Robot 6 (Performance)
+# Weekly Sun:   Weekly Report
+# =============================================================================
