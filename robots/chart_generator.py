@@ -141,14 +141,18 @@ def fetch_candles_for_chart(market: str, limit: int) -> Optional[pd.DataFrame]:
     """
     Fetch historical candles for chart generation
 
+    Uses:
+    - Binance for Crypto (BTC/USDT, etc.)
+    - TwelveData for Forex, Commodities, Stocks (Grow Plan)
+
     Returns pandas DataFrame with OHLCV data
     """
     logger.info(f"Fetching {limit} candles for {market}...")
 
     try:
-        # Determine market type
+        # Determine market type and fetch data
         if "/" in market and "USDT" in market:
-            # Crypto (e.g., BTC/USDT)
+            # Crypto (e.g., BTC/USDT) - Use Binance
             symbol = market.replace("/", "")  # BTC/USDT -> BTCUSDT
             binance = BinanceClient()
             candles = binance.get_klines(symbol, interval="1h", limit=limit)
@@ -162,33 +166,45 @@ def fetch_candles_for_chart(market: str, limit: int) -> Optional[pd.DataFrame]:
             for col in ['open', 'high', 'low', 'close', 'volume']:
                 df[col] = pd.to_numeric(df[col])
 
-            logger.info(f"✓ Fetched {len(df)} candles for {market}")
+            logger.info(f"✓ Fetched {len(df)} candles for {market} (Binance)")
             return df
 
-        elif "/" in market:
-            # Forex (e.g., USD/TRY)
-            parts = market.split("/")
-            if len(parts) == 2:
-                polygon_key = get_secret("POLYGON_API_KEY", required=False)
-                if polygon_key:
-                    polygon = PolygonClient(polygon_key)
-                    candles = polygon.get_forex_candles(parts[0], parts[1], timespan="hour", limit=limit)
-
-                    # Convert to DataFrame
-                    df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                    df.set_index('timestamp', inplace=True)
-
-                    for col in ['open', 'high', 'low', 'close', 'volume']:
-                        df[col] = pd.to_numeric(df[col])
-
-                    logger.info(f"✓ Fetched {len(df)} candles for {market}")
-                    return df
-
         else:
-            # Commodity or other (skip for now)
-            logger.warning(f"Unsupported market type: {market}")
-            return None
+            # Forex, Commodities, Stocks - Use TwelveData (Grow Plan)
+            from utils.api_clients import TwelveDataClient
+
+            twelve = TwelveDataClient()
+
+            # Determine category
+            if "/" in market:
+                if "XAU" in market or "XAG" in market:
+                    category = "COMMODITY"
+                elif "TRY" in market or "USD" in market or "EUR" in market or "GBP" in market or "JPY" in market or "CHF" in market or "AUD" in market:
+                    category = "FOREX"
+                else:
+                    category = "FOREX"
+            else:
+                # Stocks (SPY, QQQ, NVDA, etc.)
+                category = "STOCK_CFD"
+
+            candles = twelve.get_time_series(market, interval="1h", outputsize=limit, category=category)
+
+            if not candles:
+                logger.warning(f"No candles returned for {market}")
+                return None
+
+            # Convert to DataFrame
+            df = pd.DataFrame(candles)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+            df.set_index('timestamp', inplace=True)
+
+            # Ensure numeric types
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col])
+
+            logger.info(f"✓ Fetched {len(df)} candles for {market} (TwelveData)")
+            return df
 
     except Exception as e:
         logger.error(f"Failed to fetch candles for {market}: {e}")
