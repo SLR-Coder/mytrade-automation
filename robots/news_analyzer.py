@@ -64,13 +64,13 @@ class NewsAnalyzer:
 
         logger.info(f"NewsAnalyzer initialized (NewsAPI: {'✓' if self.newsapi_key else '✗'}, Gemini: {'✓' if self.gemini_model else '✗'})")
 
-    def fetch_news(self, query: str, lookback_hours: int = 6) -> List[dict]:
+    def fetch_news(self, query: str, lookback_hours: int = 24) -> List[dict]:
         """
         Fetch news from NewsAPI
 
         Args:
             query: Search query (e.g., "bitcoin OR crypto")
-            lookback_hours: Hours to look back
+            lookback_hours: Hours to look back (not used in free tier)
 
         Returns:
             List of news articles
@@ -80,16 +80,15 @@ class NewsAnalyzer:
             return []
 
         try:
-            from_date = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).strftime("%Y-%m-%dT%H:%M:%S")
-
+            # Note: Free tier doesn't support 'from' date filtering well
+            # So we fetch recent news and filter client-side if needed
             url = "https://newsapi.org/v2/everything"
             params = {
                 "q": query,
-                "from": from_date,
                 "sortBy": "publishedAt",
                 "language": "en",
                 "apiKey": self.newsapi_key,
-                "pageSize": 20
+                "pageSize": 10
             }
 
             response = requests.get(url, params=params, timeout=15)
