@@ -2,33 +2,40 @@
 # -*- coding: utf-8 -*-
 """
 Robot 2: News Analyzer
-Fetches news and performs sentiment analysis using AI
+Fetches news, performs sentiment analysis, saves to News tab, and shares to Telegram
 """
 
 import os
 import logging
 import asyncio
-from typing import List, Optional
-from datetime import datetime, timedelta
-import requests
-import google.generativeai as genai
-
-# Database imports removed - using Google Sheets only for production
-# from core.models import NewsItem
-# from core.database import get_db_session
-# from data.models.news import NewsModel
+import time
+from typing import List, Optional, Dict
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
-from typing import Optional as OptionalType
+import requests
+
+import google.generativeai as genai
+from telegram import Bot
+from telegram.constants import ParseMode
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.schema import resolve_columns
+from utils.common import status_text
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("Robot-2-NewsAnalyzer")
+
+# Configuration
+NEWS_TAB = "News"
+NEWS_LOOKBACK_HOURS = int(os.getenv("NEWS_LOOKBACK_HOURS", "6"))
+MAX_NEWS_PER_CATEGORY = 5
+MAX_TELEGRAM_NEWS = 10
 
 
 @dataclass
 class NewsItem:
-    """News item data structure (replaced database model)"""
-    published_at: str
+    """News item data structure"""
+    published_at: datetime
     title: str
     summary: str
     turkish_summary: str
@@ -37,14 +44,7 @@ class NewsItem:
     sentiment_score: float
     sentiment_label: str
     impact: str
-    related_markets: str
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Robot-2-NewsAnalyzer")
-
-# Environment variables
-SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
-NEWS_LOOKBACK_HOURS = int(os.getenv("NEWS_LOOKBACK_HOURS", "24"))
+    related_markets: List[str]
 
 
 class NewsAnalyzer:
@@ -54,17 +54,17 @@ class NewsAnalyzer:
         """Initialize news analyzer"""
         self.newsapi_key = get_secret("NEWSAPI_KEY", required=False)
 
-        # Initialize Gemini for Turkish translations
+        # Initialize Gemini for sentiment analysis and Turkish translations
         gemini_key = get_secret("GEMINI_API_KEY", required=False)
         if gemini_key:
             genai.configure(api_key=gemini_key)
-            self.gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+            self.gemini_model = genai.GenerativeModel('gemini-2.0-flash')
         else:
             self.gemini_model = None
 
         logger.info(f"NewsAnalyzer initialized (NewsAPI: {'✓' if self.newsapi_key else '✗'}, Gemini: {'✓' if self.gemini_model else '✗'})")
 
-    def fetch_news(self, query: str, lookback_hours: int = 24) -> List[dict]:
+    def fetch_news(self, query: str, lookback_hours: int = 6) -> List[dict]:
         """
         Fetch news from NewsAPI
 
@@ -80,7 +80,7 @@ class NewsAnalyzer:
             return []
 
         try:
-            from_date = (datetime.utcnow() - timedelta(hours=lookback_hours)).isoformat()
+            from_date = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).strftime("%Y-%m-%dT%H:%M:%S")
 
             url = "https://newsapi.org/v2/everything"
             params = {
@@ -92,7 +92,7 @@ class NewsAnalyzer:
                 "pageSize": 20
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=15)
             response.raise_for_status()
 
             data = response.json()
@@ -106,21 +106,12 @@ class NewsAnalyzer:
             return []
 
     def analyze_sentiment(self, title: str, description: Optional[str] = None) -> dict:
-        """
-        Analyze sentiment using Gemini
-
-        Args:
-            title: News title
-            description: News description
-
-        Returns:
-            Dict with sentiment_score, sentiment_label, impact
-        """
+        """Analyze sentiment using Gemini"""
         if not self.gemini_model:
             return {
                 "sentiment_score": 0.0,
-                "sentiment_label": "neutral",
-                "impact": "MEDIUM"
+                "sentiment_label": "Nötr",
+                "impact": "ORTA"
             }
 
         try:
@@ -128,15 +119,14 @@ class NewsAnalyzer:
             if description:
                 text += f" {description}"
 
-            prompt = f"""Analyze the sentiment and market impact of this news:
+            prompt = f"""Analyze the sentiment and market impact of this financial news:
 
 "{text}"
 
-Provide your analysis in this format:
-SENTIMENT_SCORE: [number from -1.0 (very negative) to +1.0 (very positive)]
-SENTIMENT_LABEL: [positive/negative/neutral]
-IMPACT: [HIGH/MEDIUM/LOW]
-REASONING: [Brief explanation]
+Respond ONLY in this exact format (no extra text):
+SENTIMENT_SCORE: [number from -1.0 to +1.0]
+SENTIMENT_LABEL: [Pozitif/Negatif/Nötr]
+IMPACT: [YÜKSEK/ORTA/DÜŞÜK]
 """
 
             response = self.gemini_model.generate_content(prompt)
@@ -147,28 +137,26 @@ REASONING: [Brief explanation]
             logger.error(f"Sentiment analysis failed: {e}")
             return {
                 "sentiment_score": 0.0,
-                "sentiment_label": "neutral",
-                "impact": "MEDIUM"
+                "sentiment_label": "Nötr",
+                "impact": "ORTA"
             }
 
     def _parse_sentiment_response(self, content: str) -> dict:
         """Parse Gemini sentiment response"""
-        lines = content.strip().split('\n')
-
         sentiment_score = 0.0
-        sentiment_label = "neutral"
-        impact = "MEDIUM"
+        sentiment_label = "Nötr"
+        impact = "ORTA"
 
-        for line in lines:
+        for line in content.strip().split('\n'):
             line = line.strip()
             if line.startswith("SENTIMENT_SCORE:"):
                 try:
                     sentiment_score = float(line.split(":", 1)[1].strip())
-                    sentiment_score = max(-1.0, min(1.0, sentiment_score))  # Clamp
+                    sentiment_score = max(-1.0, min(1.0, sentiment_score))
                 except:
                     pass
             elif line.startswith("SENTIMENT_LABEL:"):
-                sentiment_label = line.split(":", 1)[1].strip().lower()
+                sentiment_label = line.split(":", 1)[1].strip()
             elif line.startswith("IMPACT:"):
                 impact = line.split(":", 1)[1].strip().upper()
 
@@ -178,121 +166,289 @@ REASONING: [Brief explanation]
             "impact": impact
         }
 
-    def generate_turkish_summary(self, title: str, description: Optional[str] = None, sentiment_label: str = "neutral") -> Optional[str]:
-        """
-        Generate Turkish summary of news using Gemini 2.5 Pro
-
-        Args:
-            title: News title (English)
-            description: News description (English)
-            sentiment_label: Sentiment label (positive/negative/neutral)
-
-        Returns:
-            Turkish summary string
-        """
+    def generate_turkish_summary(self, title: str, description: Optional[str] = None) -> str:
+        """Generate Turkish summary of news using Gemini"""
         if not self.gemini_model:
-            return None
+            return title
 
         try:
             text = title
             if description:
                 text += f"\n\n{description}"
 
-            # Sentiment emoji for context
-            sentiment_emoji = "📈" if sentiment_label == "positive" else "📉" if sentiment_label == "negative" else "➡️"
+            prompt = f"""Sen bir finansal haber çevirmenisin. Aşağıdaki İngilizce haberi Türkçeye çevir.
 
-            prompt = f"""Sen bir finansal haber çevirmenisin. Aşağıdaki İngilizce haberi Türkçeye çevir ve özetle.
-
-İngilizce Haber:
+İngilizce:
 "{text}"
-
-Sentiment: {sentiment_label}
 
 Talimatlar:
 1. Haberi Türkçeye çevir (2-3 cümle, kısa ve öz)
 2. Profesyonel trader dili kullan
-3. Piyasaya etkisini vurgula
-4. Sadece Türkçe özeti ver, başka açıklama ekleme
+3. Sadece Türkçe çeviriyi ver, başka açıklama ekleme
 
-Türkçe Özet:"""
+Türkçe:"""
 
             response = self.gemini_model.generate_content(prompt)
-            turkish_summary = response.text.strip()
+            turkish = response.text.strip()
 
-            # Remove any "Türkçe Özet:" prefix if present
-            turkish_summary = turkish_summary.replace("Türkçe Özet:", "").strip()
+            # Clean up
+            turkish = turkish.replace("Türkçe:", "").strip()
+            turkish = turkish.replace("Türkçe Özet:", "").strip()
 
-            # Add sentiment emoji
-            turkish_summary = f"{sentiment_emoji} {turkish_summary}"
-
-            return turkish_summary
+            return turkish if turkish else title
 
         except Exception as e:
             logger.error(f"Turkish summary generation failed: {e}")
-            return None
+            return title
+
+    def determine_related_markets(self, title: str, description: str = "") -> List[str]:
+        """Determine which markets are related to this news"""
+        text = (title + " " + (description or "")).lower()
+        markets = []
+
+        # Crypto
+        if any(word in text for word in ["bitcoin", "btc", "crypto", "cryptocurrency"]):
+            markets.append("BTC/USDT")
+        if any(word in text for word in ["ethereum", "eth"]):
+            markets.append("ETH/USDT")
+        if any(word in text for word in ["xrp", "ripple"]):
+            markets.append("XRP/USDT")
+
+        # Forex
+        if any(word in text for word in ["dollar", "usd", "fed", "federal reserve"]):
+            markets.append("EUR/USD")
+        if any(word in text for word in ["euro", "ecb", "european"]):
+            markets.append("EUR/USD")
+        if any(word in text for word in ["lira", "turkey", "türkiye", "tcmb"]):
+            markets.append("USD/TRY")
+        if any(word in text for word in ["yen", "japan", "boj"]):
+            markets.append("USD/JPY")
+        if any(word in text for word in ["pound", "sterling", "uk", "boe"]):
+            markets.append("GBP/USD")
+
+        # Commodities
+        if any(word in text for word in ["gold", "altın"]):
+            markets.append("XAU/USD")
+        if any(word in text for word in ["silver", "gümüş"]):
+            markets.append("XAG/USD")
+        if any(word in text for word in ["oil", "crude", "petrol"]):
+            markets.append("OIL")
+
+        # Stocks
+        if any(word in text for word in ["apple", "iphone"]):
+            markets.append("AAPL")
+        if any(word in text for word in ["tesla", "musk"]):
+            markets.append("TSLA")
+        if any(word in text for word in ["nvidia", "gpu", "ai chip"]):
+            markets.append("NVDA")
+        if any(word in text for word in ["s&p", "sp500", "wall street"]):
+            markets.append("SPY")
+
+        return markets[:3] if markets else ["GENEL"]
 
 
-async def run():
+def save_news_to_sheet(news_items: List[NewsItem], ws) -> int:
+    """Save news items to the News sheet tab"""
+    if not news_items:
+        return 0
+
+    rows_to_add = []
+    for news in news_items:
+        row = [
+            news.published_at.strftime("%Y-%m-%d %H:%M"),  # Zaman
+            news.title[:200],  # Başlık (truncate)
+            news.source,  # Kaynak
+            f"{news.sentiment_score:+.2f}",  # Duyarlılık Skoru
+            news.sentiment_label,  # Duyarlılık
+            news.impact,  # Etki
+            ", ".join(news.related_markets),  # İlgili Piyasalar
+            news.turkish_summary[:500],  # Türkçe Özet (truncate)
+            news.url  # URL
+        ]
+        rows_to_add.append(row)
+
+    # Append rows to sheet
+    try:
+        ws.append_rows(rows_to_add, value_input_option='USER_ENTERED')
+        logger.info(f"✓ Saved {len(rows_to_add)} news items to '{NEWS_TAB}' tab")
+        return len(rows_to_add)
+    except Exception as e:
+        logger.error(f"Failed to save news to sheet: {e}")
+        return 0
+
+
+def format_telegram_news(news_items: List[NewsItem]) -> str:
+    """Format news for Telegram message"""
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    # Group by impact
+    high_impact = [n for n in news_items if n.impact == "YÜKSEK"]
+    medium_impact = [n for n in news_items if n.impact == "ORTA"]
+    low_impact = [n for n in news_items if n.impact == "DÜŞÜK"]
+
+    message = f"""━━━━━━━━━━━━━━━━━━━━━━
+📰 <b>PİYASA HABERLERİ</b>
+━━━━━━━━━━━━━━━━━━━━━━
+🕐 {now}
+"""
+
+    def format_news_item(news: NewsItem) -> str:
+        # Sentiment emoji
+        if news.sentiment_label == "Pozitif":
+            emoji = "📈"
+        elif news.sentiment_label == "Negatif":
+            emoji = "📉"
+        else:
+            emoji = "➡️"
+
+        markets = ", ".join(news.related_markets) if news.related_markets else "Genel"
+
+        return f"""
+{emoji} <b>{news.title[:100]}{'...' if len(news.title) > 100 else ''}</b>
+
+{news.turkish_summary[:300]}{'...' if len(news.turkish_summary) > 300 else ''}
+
+├─ 📊 Etki: {news.impact}
+├─ 🎯 Piyasalar: {markets}
+├─ 📰 Kaynak: {news.source}
+└─ 🕐 {news.published_at.strftime("%H:%M")}
+"""
+
+    if high_impact:
+        message += "\n🔴 <b>YÜKSEK ETKİ:</b>"
+        for news in high_impact[:3]:
+            message += format_news_item(news)
+
+    if medium_impact:
+        message += "\n🟡 <b>ORTA ETKİ:</b>"
+        for news in medium_impact[:4]:
+            message += format_news_item(news)
+
+    if low_impact and len(high_impact) + len(medium_impact) < 5:
+        message += "\n🟢 <b>DÜŞÜK ETKİ:</b>"
+        for news in low_impact[:3]:
+            message += format_news_item(news)
+
+    message += "\n━━━━━━━━━━━━━━━━━━━━━━"
+
+    return message
+
+
+async def send_news_to_telegram(news_items: List[NewsItem], bot_token: str, chat_id: str) -> bool:
+    """Send news to Telegram with retry logic"""
+    if not news_items:
+        logger.info("No news to send to Telegram")
+        return True
+
+    try:
+        bot = Bot(token=bot_token)
+        message = format_telegram_news(news_items)
+
+        # Retry logic
+        for attempt in range(3):
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=True
+                )
+                logger.info(f"✓ News sent to Telegram ({len(news_items)} items)")
+                return True
+            except Exception as e:
+                if attempt < 2:
+                    wait_time = 2 ** (attempt + 1)
+                    logger.warning(f"Telegram error (attempt {attempt + 1}/3), waiting {wait_time}s: {e}")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise
+
+    except Exception as e:
+        logger.error(f"Failed to send news to Telegram: {e}")
+        return False
+
+
+def run():
     """Main execution function for Robot 2"""
     logger.info("=" * 60)
     logger.info("ROBOT 2: NEWS ANALYZER - STARTING")
     logger.info("=" * 60)
 
     try:
-        # Initialize analyzer
+        # Initialize
         analyzer = NewsAnalyzer()
 
-        # Define news queries for different markets
+        # Get secrets
+        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+        telegram_token = get_secret("TELEGRAM_BOT_TOKEN")
+        telegram_chat_id = get_secret("TELEGRAM_CHAT_ID")
+
+        # Connect to Google Sheets
+        gc = get_gspread_client()
+        spreadsheet = gc.open_by_key(sheet_id)
+
+        # Get or create News tab
+        try:
+            news_ws = spreadsheet.worksheet(NEWS_TAB)
+        except:
+            logger.warning(f"'{NEWS_TAB}' tab not found, creating...")
+            news_ws = spreadsheet.add_worksheet(title=NEWS_TAB, rows=1000, cols=10)
+            # Add header row
+            news_ws.append_row([
+                "Zaman", "Başlık", "Kaynak", "Duyarlılık Skoru",
+                "Duyarlılık", "Etki", "İlgili Piyasalar", "Türkçe Özet", "URL"
+            ])
+
+        # Define search queries
         queries = {
-            "crypto": "bitcoin OR ethereum OR cryptocurrency OR crypto market",
-            "forex": "USD TRY OR forex OR currency market OR central bank",
-            "commodities": "gold price OR silver OR commodities",
+            "crypto": "bitcoin OR ethereum OR cryptocurrency",
+            "forex": "forex OR USD OR EUR OR central bank OR interest rate",
+            "commodities": "gold price OR oil price OR commodities",
+            "stocks": "stock market OR S&P 500 OR NASDAQ OR earnings",
+            "turkey": "Turkey economy OR Turkish lira OR TCMB"
         }
 
-        all_news_items: List[NewsItem] = []
+        all_news: List[NewsItem] = []
 
-        # Fetch news for each category
+        # Fetch and analyze news
         for category, query in queries.items():
-            logger.info(f"\nFetching {category} news...")
+            logger.info(f"\n📰 Fetching {category} news...")
 
             articles = analyzer.fetch_news(query, lookback_hours=NEWS_LOOKBACK_HOURS)
 
-            for article in articles[:10]:  # Limit to top 10 per category
+            for article in articles[:MAX_NEWS_PER_CATEGORY]:
                 try:
                     title = article.get("title", "")
                     description = article.get("description", "")
                     source = article.get("source", {}).get("name", "Bilinmiyor")
                     url = article.get("url", "")
-                    published_at = datetime.fromisoformat(
-                        article.get("publishedAt", "").replace("Z", "+00:00")
-                    )
+
+                    # Parse date
+                    pub_str = article.get("publishedAt", "")
+                    try:
+                        published_at = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+                    except:
+                        published_at = datetime.now(timezone.utc)
+
+                    # Skip old or duplicate news
+                    if any(n.title == title for n in all_news):
+                        continue
 
                     # Analyze sentiment
                     sentiment = analyzer.analyze_sentiment(title, description)
 
                     # Generate Turkish summary
-                    turkish_summary = analyzer.generate_turkish_summary(
-                        title,
-                        description,
-                        sentiment["sentiment_label"]
-                    )
+                    turkish_summary = analyzer.generate_turkish_summary(title, description)
 
                     # Determine related markets
-                    related_markets = []
-                    title_lower = title.lower()
-                    if any(word in title_lower for word in ["bitcoin", "btc", "crypto"]):
-                        related_markets.extend(["BTC/USDT", "ETH/USDT"])
-                    if any(word in title_lower for word in ["usd", "try", "lira", "dollar"]):
-                        related_markets.append("USD/TRY")
-                    if any(word in title_lower for word in ["gold", "silver"]):
-                        related_markets.append("GOLD")
+                    related_markets = analyzer.determine_related_markets(title, description)
 
                     news_item = NewsItem(
+                        published_at=published_at,
                         title=title,
-                        summary=description[:200] if description else None,
+                        summary=description[:200] if description else "",
                         turkish_summary=turkish_summary,
                         source=source,
-                        published_at=published_at,
                         url=url,
                         sentiment_score=sentiment["sentiment_score"],
                         sentiment_label=sentiment["sentiment_label"],
@@ -300,54 +456,42 @@ async def run():
                         related_markets=related_markets
                     )
 
-                    all_news_items.append(news_item)
+                    all_news.append(news_item)
 
                     logger.info(
-                        f"  ✓ {title[:60]}... | "
-                        f"Sentiment: {sentiment['sentiment_label']} "
-                        f"({sentiment['sentiment_score']:+.2f}) | "
-                        f"Impact: {sentiment['impact']}"
+                        f"  ✓ {title[:50]}... | "
+                        f"{sentiment['sentiment_label']} ({sentiment['sentiment_score']:+.2f}) | "
+                        f"{sentiment['impact']}"
                     )
 
+                    # Rate limiting for Gemini
+                    time.sleep(0.5)
+
                 except Exception as e:
-                    logger.error(f"Failed to process article: {e}")
+                    logger.warning(f"Failed to process article: {e}")
                     continue
 
-        # Database save removed - using Google Sheets only for production
-        # if all_news_items:
-        #     async with get_db_session() as session:
-        #         for news_item in all_news_items:
-        #             news_model = NewsModel(...)
-        #             session.add(news_model)
-        #     logger.info(f"\n✓ Saved {len(all_news_items)} news items to database")
+        # Sort by impact and time
+        impact_order = {"YÜKSEK": 0, "ORTA": 1, "DÜŞÜK": 2}
+        all_news.sort(key=lambda x: (impact_order.get(x.impact, 1), -x.published_at.timestamp()))
 
-        # Update Google Sheets (write top news to a summary column)
-        try:
-            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-            gc = get_gspread_client()
-            ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
+        # Save to Google Sheets
+        saved = save_news_to_sheet(all_news, news_ws)
 
-            # Get high impact news
-            high_impact_news = [n for n in all_news_items if n.impact == "HIGH"][:3]
-
-            if high_impact_news:
-                news_summary = "📰 Top News:\n" + "\n".join([
-                    f"• {n.title[:50]}... ({n.sentiment_label})"
-                    for n in high_impact_news
-                ])
-
-                # Write to column T (News Summary) in first data row
-                ws.update_acell("T2", news_summary[:500])  # Truncate if needed
-                logger.info("✓ Updated Google Sheets with news summary")
-
-        except Exception as e:
-            logger.error(f"Failed to update Google Sheets: {e}")
+        # Send to Telegram (top news only)
+        top_news = all_news[:MAX_TELEGRAM_NEWS]
+        if top_news:
+            asyncio.run(send_news_to_telegram(top_news, telegram_token, telegram_chat_id))
 
         # Summary
+        logger.info("")
         logger.info("=" * 60)
-        logger.info(f"✓ ROBOT 2 COMPLETED!")
-        logger.info(f"  Total news analyzed: {len(all_news_items)}")
-        logger.info(f"  High impact news: {len([n for n in all_news_items if n.impact == 'HIGH'])}")
+        logger.info(f"✅ ROBOT 2 TAMAMLANDI!")
+        logger.info(f"  📰 Toplam haber: {len(all_news)}")
+        logger.info(f"  💾 Sheet'e kaydedilen: {saved}")
+        logger.info(f"  📱 Telegram'a gönderilen: {len(top_news)}")
+        logger.info(f"  🔴 Yüksek etki: {len([n for n in all_news if n.impact == 'YÜKSEK'])}")
+        logger.info(f"  🟡 Orta etki: {len([n for n in all_news if n.impact == 'ORTA'])}")
         logger.info("=" * 60)
 
     except Exception as e:
@@ -356,14 +500,4 @@ async def run():
 
 
 if __name__ == "__main__":
-    # Database initialization removed - using Google Sheets only
-    # from core.database import init_database, close_database
-
-    async def main():
-        # await init_database()  # Removed - no database in production
-        try:
-            await run()
-        finally:
-            pass  # await close_database()  # Removed - no database in production
-
-    asyncio.run(main())
+    run()
