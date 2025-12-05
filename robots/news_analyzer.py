@@ -253,11 +253,14 @@ def save_news_to_sheet(news_items: List[NewsItem], ws) -> int:
 
     rows_to_add = []
     for news in news_items:
+        # Format sentiment score without + sign (Google Sheets interprets + as formula)
+        score_str = f"{news.sentiment_score:.2f}"
+
         row = [
             news.published_at.strftime("%Y-%m-%d %H:%M"),  # Zaman
             news.title[:200],  # Başlık (truncate)
             news.source,  # Kaynak
-            f"{news.sentiment_score:+.2f}",  # Duyarlılık Skoru
+            score_str,  # Duyarlılık Skoru (without + prefix)
             news.sentiment_label,  # Duyarlılık
             news.impact,  # Etki
             ", ".join(news.related_markets),  # İlgili Piyasalar
