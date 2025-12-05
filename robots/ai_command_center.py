@@ -173,6 +173,9 @@ def run():
         # Process each market
         processed = 0
         skipped_not_ready = 0
+        skipped_robot1 = 0
+        skipped_robot3 = 0
+        skipped_robot8 = 0
 
         for row in data_rows:
             # Skip empty rows
@@ -189,14 +192,33 @@ def run():
             except:
                 price = 0
 
-            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
-            try:
-                robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
-                if not is_ready_for_analysis(robot1_status):
-                    skipped_not_ready += 1
-                    continue  # Sessizce atla - henüz hazır değil
-            except:
-                pass  # Status okunamazsa devam et
+            # 1. FLAG KONTROLÜ - Tüm ön koşullar sağlanmalı
+            # Robot 1: BK sütunu - "✅ Analiz Hazır"
+            robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
+            # Robot 3: BM sütunu - AI sinyalleri oluşturuldu
+            robot3_status = row[cols.BM - 1] if len(row) > cols.BM - 1 else ""
+            # Robot 8: BR sütunu - Personal AI analizi yapıldı
+            robot8_status = row[cols.BR - 1] if len(row) > cols.BR - 1 else ""
+
+            # Flag kontrolü - Tüm robotlar hazır olmalı
+            robot1_ready = is_ready_for_analysis(robot1_status)
+            robot3_ready = "Robot 3" in robot3_status and "✅" in robot3_status
+            robot8_ready = "Robot 8" in robot8_status and "✅" in robot8_status
+
+            if not robot1_ready:
+                skipped_not_ready += 1
+                skipped_robot1 += 1
+                continue  # Robot 1 henüz veri toplamadı
+
+            if not robot3_ready:
+                skipped_not_ready += 1
+                skipped_robot3 += 1
+                continue  # Robot 3 henüz AI sinyalleri oluşturmadı
+
+            if not robot8_ready:
+                skipped_not_ready += 1
+                skipped_robot8 += 1
+                continue  # Robot 8 henüz Personal AI analizi yapmadı
 
             # 2. Robot 7 status kontrolü - Zaten işlenmişse atla (BQ sütunu)
             try:
@@ -277,7 +299,13 @@ def run():
         logger.info(f"✅ ROBOT 7 TAMAMLANDI")
         logger.info(f"  İşlenen piyasa: {processed}/{len(data_rows)}")
         if skipped_not_ready > 0:
-            logger.info(f"  ⏳ Beklemede (henüz hazır değil): {skipped_not_ready}")
+            logger.info(f"  ⏳ Beklemede (toplam): {skipped_not_ready}")
+            if skipped_robot1 > 0:
+                logger.info(f"     └─ Robot 1 (veri) bekliyor: {skipped_robot1}")
+            if skipped_robot3 > 0:
+                logger.info(f"     └─ Robot 3 (AI sinyal) bekliyor: {skipped_robot3}")
+            if skipped_robot8 > 0:
+                logger.info(f"     └─ Robot 8 (Personal AI) bekliyor: {skipped_robot8}")
         logger.info("=" * 80)
 
     except Exception as e:
