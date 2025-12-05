@@ -123,12 +123,36 @@ Teknik Göstergeler:
         if indicators.get('trend'):
             prompt += f"- Eğilim: {indicators['trend']}\n"
 
+        # SMC Göstergeleri
+        prompt += "\nSMC (Smart Money Concepts) Göstergeleri:\n"
+        if indicators.get('fvg_status'):
+            prompt += f"- FVG (Fair Value Gap): {indicators['fvg_status']}\n"
+        if indicators.get('liquidity_sweep'):
+            prompt += f"- Liquidity Sweep: {indicators['liquidity_sweep']}\n"
+        if indicators.get('rsi_divergence'):
+            prompt += f"- RSI Divergence: {indicators['rsi_divergence']}\n"
+        if indicators.get('structure_break'):
+            prompt += f"- Structure Break: {indicators['structure_break']}\n"
+        if indicators.get('swing_high'):
+            prompt += f"- Swing High: ${indicators['swing_high']:.2f}\n"
+        if indicators.get('swing_low'):
+            prompt += f"- Swing Low: ${indicators['swing_low']:.2f}\n"
+        if indicators.get('adr_exhaustion'):
+            prompt += f"- ADR Kullanım: {indicators['adr_exhaustion']}\n"
+        if indicators.get('htf_trend'):
+            prompt += f"- HTF Trend (1H): {indicators['htf_trend']}\n"
+        if indicators.get('session'):
+            prompt += f"- Session: {indicators['session']}\n"
+
+        if indicators.get('temporal_summary'):
+            prompt += f"\nSon 30 Dakika Trendi: {indicators['temporal_summary']}\n"
+
         if news_sentiment:
             prompt += f"\nHaber Duyarlılığı: {news_sentiment}\n"
 
         prompt += """
 
-Bu piyasayı analiz et ve şu formatta cevap ver:
+Bu piyasayı analiz et (SMC göstergelerini de dikkate al) ve şu formatta cevap ver:
 
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100 arası sayı]

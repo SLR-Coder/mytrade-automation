@@ -108,13 +108,27 @@ Teknik Göstergeler:
 - EMA 9: {indicators.get('ema_9', 'Yok')}
 - EMA 21: {indicators.get('ema_21', 'Yok')}
 - Eğilim: {indicators.get('trend', 'Yok')}
+
+SMC (Smart Money Concepts) Göstergeleri:
+- FVG (Fair Value Gap): {indicators.get('fvg_status', 'Yok')}
+- Liquidity Sweep: {indicators.get('liquidity_sweep', 'Yok')}
+- RSI Divergence: {indicators.get('rsi_divergence', 'Yok')}
+- Structure Break: {indicators.get('structure_break', 'Yok')}
+- Swing High: {indicators.get('swing_high', 'Yok')}
+- Swing Low: {indicators.get('swing_low', 'Yok')}
+- ADR Kullanım: {indicators.get('adr_exhaustion', 'Yok')}
+- HTF Trend (1H): {indicators.get('htf_trend', 'Yok')}
+- Session: {indicators.get('session', 'Yok')}
 """
+
+        if indicators.get('temporal_summary'):
+            prompt += f"\nSon 30 Dakika Trendi: {indicators['temporal_summary']}\n"
 
         if news_sentiment:
             prompt += f"\nHaber Duyarlılığı: {news_sentiment}\n"
 
         prompt += """
-Analizini tam olarak şu formatta ver:
+Analizini (SMC dahil) tam olarak şu formatta ver:
 SIGNAL: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
 REASONING: [1-2 cümlelik kısa açıklama - TÜRKÇE yaz]
