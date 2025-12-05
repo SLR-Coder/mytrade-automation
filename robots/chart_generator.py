@@ -146,6 +146,11 @@ def read_latest_signals(ws, cols) -> List[Dict]:
         if not is_ready_for_analysis(robot1_status):
             continue  # Henüz hazır değil
 
+        # Check if Robot 4 already processed this row (BN column)
+        robot4_status = row[cols.BN - 1] if len(row) > cols.BN - 1 else ""
+        if robot4_status and "✅" in robot4_status:
+            continue  # Already processed by Robot 4
+
         # Check if this row has Robot 7 Command Center decision (AS column)
         final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
         if not final_signal or final_signal == "":
