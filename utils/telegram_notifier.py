@@ -72,8 +72,11 @@ async def send_error_notification(
 
     message = format_error_notification(robot_name, error, attempt, max_retries)
 
-    # Send to ADMIN private chat, not public channel
+    # Send to ADMIN private chat ONLY - never to public channel!
     admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    if not admin_chat_id:
+        logger.warning("TELEGRAM_ADMIN_CHAT_ID not configured - skipping error notification")
+        return False
     return await send_telegram_message(message, chat_id=admin_chat_id)
 
 async def send_status_notification(status: str) -> bool:
@@ -86,10 +89,13 @@ async def send_status_notification(status: str) -> bool:
     Returns:
         Success status
     """
-    message = f"ℹ️ <b>Sistem Durumu</b>\n\n{status}"
-
-    # Send to ADMIN private chat, not public channel
+    # Send to ADMIN private chat ONLY - never to public channel!
     admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    if not admin_chat_id:
+        logger.warning("TELEGRAM_ADMIN_CHAT_ID not configured - skipping status notification")
+        return False
+
+    message = f"ℹ️ <b>Sistem Durumu</b>\n\n{status}"
     return await send_telegram_message(message, chat_id=admin_chat_id)
 
 async def send_health_alert(component: str, status: str, details: str = None) -> bool:
@@ -104,6 +110,12 @@ async def send_health_alert(component: str, status: str, details: str = None) ->
     Returns:
         Success status
     """
+    # Send to ADMIN private chat ONLY - never to public channel!
+    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    if not admin_chat_id:
+        logger.warning("TELEGRAM_ADMIN_CHAT_ID not configured - skipping health alert")
+        return False
+
     # Status emoji mapping
     emoji_map = {
         "CRITICAL": "🔴",
@@ -124,8 +136,6 @@ async def send_health_alert(component: str, status: str, details: str = None) ->
 
     message += f"⏰ Zaman: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-    # Send to ADMIN private chat, not public channel
-    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
     return await send_telegram_message(message, chat_id=admin_chat_id)
 
 async def send_robot_progress(robot_name: str, status: str, details: str = None) -> bool:
@@ -140,6 +150,12 @@ async def send_robot_progress(robot_name: str, status: str, details: str = None)
     Returns:
         Success status
     """
+    # Send to ADMIN private chat ONLY - never to public channel!
+    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
+    if not admin_chat_id:
+        logger.warning("TELEGRAM_ADMIN_CHAT_ID not configured - skipping robot progress notification")
+        return False
+
     # Status emoji mapping
     emoji_map = {
         "STARTED": "🚀",
@@ -166,6 +182,4 @@ async def send_robot_progress(robot_name: str, status: str, details: str = None)
 
     message += f"⏰ {datetime.now().strftime('%H:%M:%S')}"
 
-    # Send to ADMIN private chat, not public channel
-    admin_chat_id = get_secret("TELEGRAM_ADMIN_CHAT_ID", required=False)
     return await send_telegram_message(message, chat_id=admin_chat_id)
