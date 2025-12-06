@@ -27,6 +27,8 @@ from utils.smc_indicators import (
     detect_structure_break, calculate_swing_points, calculate_adr,
     detect_htf_trend, detect_session, calculate_all_smc_indicators
 )
+from utils.supabase_client import insert_signals_batch, generate_batch_id as supabase_batch_id
+from utils.monitoring import update_robot_status, log_robot_start
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-1-MarketHarvester")
@@ -354,6 +356,48 @@ def fetch_twelve_data(twelve_client: TwelveDataClient, symbol: str, category: st
         return None
 
 
+def prepare_supabase_data(data_list: List[Dict]) -> List[Dict]:
+    """
+    Prepare market data for Supabase insertion
+
+    Args:
+        data_list: List of market data dicts from API
+
+    Returns:
+        List of dicts ready for Supabase insertion
+    """
+    supabase_rows = []
+
+    for data in data_list:
+        if not data:
+            continue
+
+        indicators = data.get("indicators", {})
+        smc = data.get("smc_indicators", {})
+
+        row = {
+            "market": data["market"],
+            "price": data.get("price"),
+            "volume": data.get("volume", 0),
+            "rsi": indicators.get("rsi"),
+            "macd": indicators.get("macd"),
+            "macd_signal": indicators.get("macd_signal"),
+            "bb_upper": indicators.get("bb_upper"),
+            "bb_middle": indicators.get("bb_middle"),
+            "bb_lower": indicators.get("bb_lower"),
+            "ema_9": indicators.get("ema_9"),
+            "ema_21": indicators.get("ema_21"),
+            "support_1": indicators.get("support_levels", [None])[0] if indicators.get("support_levels") else None,
+            "resistance_1": indicators.get("resistance_levels", [None])[0] if indicators.get("resistance_levels") else None,
+            "atr": indicators.get("atr"),
+            "robot1_status": "completed",
+        }
+
+        supabase_rows.append(row)
+
+    return supabase_rows
+
+
 def write_to_sheet(ws, cols, data_list: List[Dict], batch_status: str):
     """
     Write market data to Google Sheets - YENİ SCHEMA V2.0
@@ -621,7 +665,28 @@ def run():
             for market, reason in skipped_markets:
                 logger.info(f"   - {market}: {reason}")
 
-        # Write to Google Sheets
+        # ═══════════════════════════════════════════════════════════════
+        # WRITE TO SUPABASE (Primary Database)
+        # ═══════════════════════════════════════════════════════════════
+        supabase_success = False
+        supabase_count = 0
+        supabase_error = ""
+
+        if all_data:
+            try:
+                logger.info("=" * 60)
+                logger.info("📤 Writing to Supabase...")
+                supabase_data = prepare_supabase_data(all_data)
+                supabase_count = insert_signals_batch(supabase_data)
+                supabase_success = supabase_count > 0
+                logger.info(f"✅ Supabase: {supabase_count} markets written")
+            except Exception as e:
+                supabase_error = str(e)[:100]
+                logger.error(f"❌ Supabase write failed: {e}")
+
+        # ═══════════════════════════════════════════════════════════════
+        # WRITE TO GOOGLE SHEETS (Legacy + Full Data)
+        # ═══════════════════════════════════════════════════════════════
         if all_data:
             logger.info("=" * 60)
 
@@ -632,14 +697,68 @@ def run():
 
             logger.info(f"Writing {len(all_data)} markets to Google Sheets...")
             write_to_sheet(ws, cols, all_data, batch_status)
+
+        # ═══════════════════════════════════════════════════════════════
+        # UPDATE MONITORING DASHBOARD
+        # ═══════════════════════════════════════════════════════════════
+        try:
+            detail = f"{len(all_data)} piyasa toplandı"
+            if skipped_markets:
+                detail += f", {len(skipped_markets)} atlandı"
+
+            update_robot_status(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=1,
+                success=len(all_data) > 0 and supabase_success,
+                count=len(all_data),
+                detail=detail,
+                error=supabase_error if not supabase_success else ""
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
+
+        # Final summary
+        if all_data:
             logger.info("=" * 60)
             logger.info("✅ ROBOT 1 COMPLETED SUCCESSFULLY")
+            logger.info(f"   📊 Markets: {len(all_data)}/{TOTAL_MARKETS}")
+            logger.info(f"   💾 Supabase: {'✅' if supabase_success else '❌'}")
+            logger.info(f"   📋 Sheets: ✅")
             logger.info("=" * 60)
         else:
             logger.warning("⚠ No market data collected")
+            # Update monitoring with warning
+            try:
+                update_robot_status(
+                    gc=gc,
+                    sheet_id=sheet_id,
+                    robot_number=1,
+                    success=False,
+                    count=0,
+                    detail="Veri toplanamadı",
+                    error="No market data"
+                )
+            except:
+                pass
 
     except Exception as e:
         logger.error(f"❌ ROBOT 1 FAILED: {e}", exc_info=True)
+        # Update monitoring with error
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_robot_status(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=1,
+                success=False,
+                count=0,
+                detail="",
+                error=str(e)[:50]
+            )
+        except:
+            pass
         raise
 
 
