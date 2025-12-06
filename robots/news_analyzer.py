@@ -506,8 +506,34 @@ def run():
         saved = save_news_to_sheet(top_news, news_ws)
 
         # Send to Telegram (only if we have new news)
+        telegram_sent = 0
         if top_news:
-            asyncio.run(send_news_to_telegram(top_news, telegram_token, telegram_chat_id))
+            try:
+                # Use asyncio.run() safely - works in sync context
+                success = asyncio.run(send_news_to_telegram(top_news, telegram_token, telegram_chat_id))
+                if success:
+                    telegram_sent = len(top_news)
+                else:
+                    logger.warning("⚠️ Telegram gönderimi başarısız oldu")
+            except RuntimeError as e:
+                # Handle "event loop already running" error
+                if "already running" in str(e):
+                    logger.warning(f"⚠️ Event loop çakışması, yeni loop oluşturuluyor: {e}")
+                    # Create new event loop
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        success = loop.run_until_complete(
+                            send_news_to_telegram(top_news, telegram_token, telegram_chat_id)
+                        )
+                        if success:
+                            telegram_sent = len(top_news)
+                    finally:
+                        loop.close()
+                else:
+                    logger.error(f"❌ Telegram hatası: {e}")
+            except Exception as e:
+                logger.error(f"❌ Telegram gönderim hatası: {e}")
 
         # Summary
         logger.info("")
@@ -516,7 +542,7 @@ def run():
         logger.info(f"  📰 Toplam haber çekildi: {len(all_news)}")
         logger.info(f"  🇹🇷 Türkçeye çevrilen: {len(top_news)}")
         logger.info(f"  💾 Sheet'e kaydedilen: {saved}")
-        logger.info(f"  📱 Telegram'a gönderilen: {len(top_news)}")
+        logger.info(f"  📱 Telegram'a gönderilen: {telegram_sent}/{len(top_news)}")
         logger.info(f"  🔴 Yüksek etki: {len([n for n in top_news if n.impact == 'YÜKSEK'])}")
         logger.info(f"  🟡 Orta etki: {len([n for n in top_news if n.impact == 'ORTA'])}")
         logger.info("=" * 60)
