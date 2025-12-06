@@ -10,8 +10,17 @@ import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
+import pytz
 
 logger = logging.getLogger("Supabase")
+
+# Turkey timezone
+TURKEY_TZ = pytz.timezone('Europe/Istanbul')
+
+
+def get_turkey_time() -> datetime:
+    """Get current time in Turkey timezone"""
+    return datetime.now(TURKEY_TZ)
 
 # Lazy initialization
 _supabase_client = None
@@ -35,17 +44,17 @@ def get_supabase():
 
 
 def generate_batch_id() -> str:
-    """Generate batch ID based on current 30-minute window
+    """Generate batch ID based on current 30-minute window (Turkey time)
 
     Format: 2025-12-06_14:00 or 2025-12-06_14:30
     """
-    now = datetime.now()
+    now = get_turkey_time()
     minute = 0 if now.minute < 30 else 30
     return now.strftime(f"%Y-%m-%d_%H:{minute:02d}")
 
 
 def get_batch_sequence() -> int:
-    """Get current batch sequence (1-6) within 30-minute window
+    """Get current batch sequence (1-6) within 30-minute window (Turkey time)
 
     :00-:04 → 1
     :05-:09 → 2
@@ -56,7 +65,7 @@ def get_batch_sequence() -> int:
     :30-:34 → 1
     ...
     """
-    now = datetime.now()
+    now = get_turkey_time()
     minute_in_window = now.minute % 30
     return (minute_in_window // 5) + 1
 
@@ -347,7 +356,7 @@ def update_batch_analysis(batch_id: str, market: str, robot_number: int, data: D
 
         # Add status
         data[f"robot{robot_number}_status"] = "completed"
-        data[f"robot{robot_number}_completed_at"] = datetime.now().isoformat()
+        data[f"robot{robot_number}_completed_at"] = get_turkey_time().isoformat()
 
         # Update all sequences for this market in this batch
         supabase.table("signals").update(data).eq(
@@ -429,7 +438,7 @@ def update_robot_status(
 
         # Add status and timestamp
         data[f"robot{robot_number}_status"] = status
-        data[f"robot{robot_number}_completed_at"] = datetime.now().isoformat()
+        data[f"robot{robot_number}_completed_at"] = get_turkey_time().isoformat()
 
         # Convert Decimal to float
         for key, value in data.items():
@@ -522,7 +531,7 @@ def update_position_status(signal_id: int, status: str, hit_time: Optional[datet
 
         data = {
             "position_status": status,
-            "robot9_last_check": datetime.now().isoformat()
+            "robot9_last_check": get_turkey_time().isoformat()
         }
 
         # Add hit timestamp
