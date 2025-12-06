@@ -3,6 +3,7 @@
 """
 Robot 9: Real-Time TP/SL Monitor
 Açık pozisyonları izler ve TP1/TP2/SL seviyelerine ulaşıldığında Telegram bildirimi gönderir.
+Supabase'den okur ve günceller.
 """
 
 import os
@@ -12,26 +13,23 @@ from typing import Dict, List, Optional, Any
 from telegram import Bot
 from telegram.constants import ParseMode
 
-from config.constants import (
-    SHEETS_RATE_LIMIT_SLEEP,
-    DEFAULT_SHEET_TAB,
-    CRYPTO_SYMBOLS
-)
+from config.constants import CRYPTO_SYMBOLS
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.schema import resolve_columns
-from utils.common import parse_float, status_text
+from utils.supabase_client import (
+    get_pending_batches_for_robot,
+    update_batch_analysis,
+    get_supabase,
+    get_turkey_time
+)
+from utils.monitoring import update_robot_status as update_monitoring
 from utils.api_clients import (
     BinanceClient,
-    TwelveDataClient,
-    PolygonClient,
-    AlphaVantageClient
+    TwelveDataClient
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-9-TPMonitor")
-
-SHEET_TAB = os.getenv("SHEET_TAB", DEFAULT_SHEET_TAB)
 
 
 def get_current_price(market: str) -> Optional[float]:
@@ -200,112 +198,114 @@ def send_sl_notification(bot: Bot, chat_id: str, market: str, signal: str,
         logger.error(f"  ❌ Telegram bildirimi gönderilemedi: {e}")
 
 
-def run():
-    """Main execution function for Robot 9"""
-    logger.info("=" * 80)
-    logger.info("🎯 ROBOT 9: TP/SL MONITOR - BAŞLAT")
-    logger.info("=" * 80)
-
+def get_open_positions_from_supabase() -> List[Dict]:
+    """Get open positions from Supabase for monitoring"""
     try:
-        # Initialize services
-        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-        telegram_token = get_secret("TELEGRAM_BOT_TOKEN")
-        telegram_chat_id = get_secret("TELEGRAM_CHAT_ID")
+        supabase = get_supabase()
 
-        gc = get_gspread_client()
-        ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
-        cols = resolve_columns(ws)
+        # Get signals with:
+        # - robot5_status = completed (Telegram published)
+        # - final_signal = BUY or SELL
+        # - position_status is null or OPEN or TP1_HIT (still open)
+        result = supabase.table("signals").select("*").eq(
+            "robot5_status", "completed"
+        ).eq(
+            "batch_sequence", 6  # Only sequence 6 to avoid duplicates
+        ).in_(
+            "final_signal", ["BUY", "SELL"]
+        ).execute()
 
-        bot = Bot(token=telegram_token)
+        if not result.data:
+            return []
 
-        # Read all rows
-        all_rows = ws.get_all_values()
-
-        if len(all_rows) < 2:
-            logger.info("  ℹ️  Veri yok")
-            return
-
-        # Skip header row
-        data_rows = all_rows[1:]
-
-        # Track open positions
+        # Filter for open positions
         open_positions = []
-
-        for i, row in enumerate(data_rows, start=2):  # Row 2 is first data row
-            row_index = i
-
-            # Check if this row has a trading signal
-            if len(row) <= cols.AS - 1:
-                continue
-
-            final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
-
-            # Only monitor BUY/SELL signals (not HOLD)
-            if final_signal not in ["BUY", "SELL"]:
-                continue
-
-            # Get market and prices
-            market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
-
-            # Skip separator rows
-            if not market or "📊" in market or "RAPORU" in market:
-                continue
-
-            # Get Entry/TP/SL prices (Risk columns: AY-BB)
-            entry_str = row[cols.AY - 1] if len(row) > cols.AY - 1 else ""
-            sl_str = row[cols.AZ - 1] if len(row) > cols.AZ - 1 else ""
-            tp1_str = row[cols.BA - 1] if len(row) > cols.BA - 1 else ""
-            tp2_str = row[cols.BB - 1] if len(row) > cols.BB - 1 else ""
-
-            # Parse prices
-            entry_price = parse_float(entry_str.replace("$", "").replace(",", "")) if entry_str else None
-            sl_price = parse_float(sl_str.replace("$", "").replace(",", "")) if sl_str else None
-            tp1_price = parse_float(tp1_str.replace("$", "").replace(",", "")) if tp1_str else None
-            tp2_price = parse_float(tp2_str.replace("$", "").replace(",", "")) if tp2_str else None
-
-            # Skip if no valid prices
-            if not entry_price or not sl_price:
-                continue
-
-            # Check hit status (TP/SL tracking columns: BE-BH)
-            tp1_hit = row[cols.BE - 1] if len(row) > cols.BE - 1 else ""
-            tp2_hit = row[cols.BF - 1] if len(row) > cols.BF - 1 else ""
-            sl_hit = row[cols.BG - 1] if len(row) > cols.BG - 1 else ""
-            position_status = row[cols.BH - 1] if len(row) > cols.BH - 1 else ""
+        for row in result.data:
+            position_status = row.get("position_status", "")
 
             # Skip closed positions
-            if position_status == "CLOSED":
+            if position_status in ["CLOSED", "TP2_HIT", "SL_HIT"]:
+                continue
+
+            # Need valid TP/SL values
+            entry = row.get("entry_price") or row.get("price")
+            sl = row.get("sl")
+            tp1 = row.get("tp1")
+            tp2 = row.get("tp2")
+
+            if not entry or not sl:
                 continue
 
             open_positions.append({
-                "row_index": row_index,
-                "market": market,
-                "signal": final_signal,
-                "entry": entry_price,
-                "sl": sl_price,
-                "tp1": tp1_price,
-                "tp2": tp2_price,
-                "tp1_hit": tp1_hit == "YES",
-                "tp2_hit": tp2_hit == "YES",
-                "sl_hit": sl_hit == "YES",
-                "position_status": position_status
+                "batch_id": row["batch_id"],
+                "market": row["market"],
+                "signal": row["final_signal"],
+                "entry": float(entry),
+                "sl": float(sl),
+                "tp1": float(tp1) if tp1 else None,
+                "tp2": float(tp2) if tp2 else None,
+                "position_status": position_status or "OPEN",
             })
+
+        return open_positions
+
+    except Exception as e:
+        logger.error(f"Error getting open positions: {e}")
+        return []
+
+
+def update_position_in_supabase(batch_id: str, market: str, update_data: Dict) -> bool:
+    """Update position status in Supabase (all 6 sequences)"""
+    try:
+        supabase = get_supabase()
+
+        update_data["robot9_last_check"] = get_turkey_time().isoformat()
+
+        supabase.table("signals").update(update_data).eq(
+            "batch_id", batch_id
+        ).eq("market", market).execute()
+
+        return True
+    except Exception as e:
+        logger.error(f"Error updating position: {e}")
+        return False
+
+
+def run():
+    """Main execution function for Robot 9 - SUPABASE MODE"""
+    logger.info("=" * 80)
+    logger.info("🎯 ROBOT 9: TP/SL MONITOR - SUPABASE MODE")
+    logger.info("=" * 80)
+
+    monitored = 0
+    notifications_sent = 0
+    error_msg = ""
+
+    try:
+        # Initialize Telegram
+        telegram_token = get_secret("TELEGRAM_BOT_TOKEN")
+        telegram_chat_id = get_secret("TELEGRAM_CHAT_ID")
+        bot = Bot(token=telegram_token)
+
+        # Get open positions from Supabase
+        open_positions = get_open_positions_from_supabase()
 
         logger.info(f"\n📊 {len(open_positions)} açık pozisyon bulundu\n")
 
         if not open_positions:
             logger.info("  ℹ️  Takip edilecek açık pozisyon yok")
-            # Update Robot 9 status (BS sütunu)
-            ws.update_cell(2, cols.BS, status_text(9, True))
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 9, True, 0, "Açık pozisyon yok")
+            except:
+                pass
             return
 
         # Monitor each position
-        monitored = 0
-        notifications_sent = 0
-
         for pos in open_positions:
             logger.info(f"🔍 Kontrol: {pos['market']} ({pos['signal']})")
-            logger.info(f"  Giriş: ${pos['entry']:,.2f} | SL: ${pos['sl']:,.2f} | TP1: ${pos['tp1']:,.2f} | TP2: ${pos['tp2']:,.2f}")
+            logger.info(f"  Giriş: ${pos['entry']:,.2f} | SL: ${pos['sl']:,.2f} | TP1: ${pos['tp1']:,.2f if pos['tp1'] else 0} | TP2: ${pos['tp2']:,.2f if pos['tp2'] else 0}")
 
             # Fetch current price
             current_price = get_current_price(pos['market'])
@@ -315,9 +315,10 @@ def run():
                 continue
 
             logger.info(f"  Şu anki fiyat: ${current_price:,.2f}")
+            monitored += 1
 
             # Check TP1
-            if pos['tp1'] and not pos['tp1_hit']:
+            if pos['tp1'] and pos['position_status'] not in ["TP1_HIT", "TP2_HIT"]:
                 tp1_hit = False
                 if pos['signal'] == "BUY" and current_price >= pos['tp1']:
                     tp1_hit = True
@@ -332,14 +333,16 @@ def run():
                     send_tp_notification(bot, telegram_chat_id, pos['market'], pos['signal'],
                                         "TP1", pos['entry'], pos['tp1'], current_price, pips, pct)
 
-                    # Update sheet (BE: TP1 Hit)
-                    ws.update_cell(pos['row_index'], cols.BE, "YES")
-                    time.sleep(SHEETS_RATE_LIMIT_SLEEP)
+                    # Update Supabase - all 6 sequences
+                    update_position_in_supabase(pos['batch_id'], pos['market'], {
+                        "position_status": "TP1_HIT",
+                        "tp1_hit_at": get_turkey_time().isoformat()
+                    })
 
                     notifications_sent += 1
 
             # Check TP2
-            if pos['tp2'] and not pos['tp2_hit']:
+            if pos['tp2'] and pos['position_status'] != "TP2_HIT":
                 tp2_hit = False
                 if pos['signal'] == "BUY" and current_price >= pos['tp2']:
                     tp2_hit = True
@@ -354,15 +357,16 @@ def run():
                     send_tp_notification(bot, telegram_chat_id, pos['market'], pos['signal'],
                                         "TP2", pos['entry'], pos['tp2'], current_price, pips, pct)
 
-                    # Update sheet - mark position as closed (BF: TP2 Hit, BH: Position Status)
-                    ws.update_cell(pos['row_index'], cols.BF, "YES")
-                    ws.update_cell(pos['row_index'], cols.BH, "CLOSED")
-                    time.sleep(SHEETS_RATE_LIMIT_SLEEP)
+                    # Update Supabase - mark as closed
+                    update_position_in_supabase(pos['batch_id'], pos['market'], {
+                        "position_status": "CLOSED",
+                        "tp2_hit_at": get_turkey_time().isoformat()
+                    })
 
                     notifications_sent += 1
 
             # Check SL
-            if pos['sl'] and not pos['sl_hit']:
+            if pos['sl'] and pos['position_status'] not in ["CLOSED", "SL_HIT"]:
                 sl_hit = False
                 if pos['signal'] == "BUY" and current_price <= pos['sl']:
                     sl_hit = True
@@ -377,28 +381,44 @@ def run():
                     send_sl_notification(bot, telegram_chat_id, pos['market'], pos['signal'],
                                         pos['entry'], pos['sl'], current_price, pips, pct)
 
-                    # Update sheet - mark position as closed (BG: SL Hit, BH: Position Status)
-                    ws.update_cell(pos['row_index'], cols.BG, "YES")
-                    ws.update_cell(pos['row_index'], cols.BH, "CLOSED")
-                    time.sleep(SHEETS_RATE_LIMIT_SLEEP)
+                    # Update Supabase - mark as closed
+                    update_position_in_supabase(pos['batch_id'], pos['market'], {
+                        "position_status": "CLOSED",
+                        "sl_hit_at": get_turkey_time().isoformat()
+                    })
 
                     notifications_sent += 1
 
-            monitored += 1
             logger.info("")
-
-        # Update Robot 9 status (BS sütunu)
-        ws.update_cell(2, cols.BS, status_text(9, True))
 
         logger.info("=" * 80)
         logger.info(f"✅ ROBOT 9 TAMAMLANDI")
         logger.info(f"  İzlenen pozisyon: {monitored}/{len(open_positions)}")
         logger.info(f"  Gönderilen bildirim: {notifications_sent}")
+        logger.info(f"  💾 Supabase: ✅")
         logger.info("=" * 80)
 
     except Exception as e:
+        error_msg = str(e)[:50]
         logger.error(f"❌ ROBOT 9 BAŞARISIZ: {e}", exc_info=True)
         raise
+
+    finally:
+        # Update monitoring dashboard
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=9,
+                success=monitored > 0 or not error_msg,
+                count=monitored,
+                detail=f"{monitored} pozisyon, {notifications_sent} bildirim",
+                error=error_msg
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
 
 
 if __name__ == "__main__":

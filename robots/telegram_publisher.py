@@ -19,7 +19,7 @@ from telegram.constants import ParseMode
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.supabase_client import get_signals_to_publish, update_robot_status
+from utils.supabase_client import get_pending_batches_for_robot, update_batch_analysis
 from utils.monitoring import update_robot_status as update_monitoring
 from utils.telegram_formatter import get_performance_badge
 
@@ -675,111 +675,127 @@ def send_signals_individually(bot_token: str, chat_id: str, signals: List[Dict],
 
 
 def run():
-    """Main execution function for Robot 5"""
+    """Main execution function for Robot 5 - BATCH MODE"""
     logger.info("=" * 80)
-    logger.info("📢 ROBOT 5: TELEGRAM PUBLISHER - BAŞLAT")
+    logger.info("📢 ROBOT 5: TELEGRAM PUBLISHER - BATCH MODE")
     logger.info("=" * 80)
 
     processed = 0
+    total_markets = 0
     error_msg = ""
 
     try:
         bot_token = get_secret("TELEGRAM_BOT_TOKEN")
         chat_id = get_secret("TELEGRAM_CHAT_ID")
 
-        # Get signals ready to publish from Supabase
-        pending_signals = get_signals_to_publish()
+        # Get pending BATCHES from Supabase (Robot 4 completed)
+        pending_batches = get_pending_batches_for_robot(5)
 
-        if not pending_signals:
-            logger.warning("⚠️ Yayınlanacak sinyal yok (Robot 5 için)")
+        if not pending_batches:
+            logger.info("⏳ Bekleyen batch yok (Robot 5)")
             try:
                 gc = get_gspread_client()
                 sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-                update_monitoring(gc, sheet_id, 5, True, 0, "İşlenecek veri yok")
+                update_monitoring(gc, sheet_id, 5, True, 0, "Bekleyen batch yok")
             except:
                 pass
             return
 
-        logger.info(f"🎯 {len(pending_signals)} sinyal Telegram'a gönderilecek...")
+        logger.info(f"🎯 {len(pending_batches)} batch için Telegram yayını başlıyor...")
 
-        # Convert Supabase rows to signal format for Telegram
-        signals = []
-        for signal_data in pending_signals:
-            signal = {
-                "id": signal_data["id"],
-                "market": signal_data["market"],
-                "price": float(signal_data["price"]) if signal_data.get("price") else 0,
-                "change_pct": float(signal_data.get("change_24h", 0) or 0),
-                "ensemble_signal": signal_data.get("final_signal", "HOLD"),
-                "ensemble_confidence": int(signal_data.get("final_confidence", 0) or 0),
-                "ensemble_reasoning": signal_data.get("final_analysis", ""),
-                "risk_level": signal_data.get("risk_level", "MEDIUM"),
-                "suggested_action": "SET ALERT",
-                "rsi": signal_data.get("rsi"),
-                "trend": signal_data.get("trend"),
-                "entry_price": float(signal_data.get("entry_price") or signal_data.get("price") or 0) or None,
-                "stop_loss": float(signal_data.get("sl")) if signal_data.get("sl") else None,
-                "take_profit_1": float(signal_data.get("tp1")) if signal_data.get("tp1") else None,
-                "take_profit_2": float(signal_data.get("tp2")) if signal_data.get("tp2") else None,
-                "risk_reward": float(signal_data.get("risk_reward")) if signal_data.get("risk_reward") else None,
-                "chart_url": signal_data.get("chart_url", ""),
-                # AI signals for display
-                "personal_signal": signal_data.get("personal_signal", ""),
-                "gpt4_signal": signal_data.get("gpt4_signal", ""),
-                "claude_signal": signal_data.get("claude_signal", ""),
-                "gemini_signal": signal_data.get("gemini_signal", ""),
-                "grok_signal": signal_data.get("grok_signal", ""),
-                "deepseek_signal": signal_data.get("deepseek_signal", ""),
-            }
-            signals.append(signal)
+        for batch_info in pending_batches:
+            batch_id = batch_info["batch_id"]
+            markets = batch_info["markets"]
 
-        # Filter by confidence
-        filtered_signals = filter_signals(signals, MIN_CONFIDENCE)
+            logger.info(f"\n{'='*60}")
+            logger.info(f"📦 Batch: {batch_id} - {len(markets)} market")
+            logger.info(f"{'='*60}")
 
-        # Filter to signals with charts if SEND_CHARTS is enabled
-        if SEND_CHARTS and filtered_signals:
-            signals_with_charts = []
-            for signal in filtered_signals:
-                chart_url = signal.get('chart_url', '')
-                chart_path = find_chart_for_market(signal['market']) if not chart_url else None
-                if chart_url or chart_path:
-                    signals_with_charts.append(signal)
+            # Convert batch markets to signal format for Telegram
+            signals = []
+            for market_info in markets:
+                market = market_info["market"]
+                signal_data = market_info["signal_data"]
 
-            if signals_with_charts:
-                logger.info(f"✅ {len(signals_with_charts)}/{len(filtered_signals)} sinyal grafik ile")
-                filtered_signals = signals_with_charts
-            else:
-                logger.warning("⚠️ Grafikli sinyal yok, tümü gönderilecek")
+                total_markets += 1
 
-        if not filtered_signals:
-            logger.warning(f"⚠️ {MIN_CONFIDENCE}% üzeri güven yok")
-            try:
-                gc = get_gspread_client()
-                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-                update_monitoring(gc, sheet_id, 5, True, 0, f"Güven < {MIN_CONFIDENCE}%")
-            except:
-                pass
-            return
+                signal = {
+                    "batch_id": batch_id,
+                    "market": market,
+                    "price": float(signal_data["price"]) if signal_data.get("price") else 0,
+                    "change_pct": float(signal_data.get("change_24h", 0) or 0),
+                    "ensemble_signal": signal_data.get("final_signal", "HOLD"),
+                    "ensemble_confidence": int(signal_data.get("final_confidence", 0) or 0),
+                    "ensemble_reasoning": signal_data.get("final_analysis", ""),
+                    "risk_level": signal_data.get("risk_level", "MEDIUM"),
+                    "suggested_action": "SET ALERT",
+                    "rsi": signal_data.get("rsi"),
+                    "trend": signal_data.get("trend"),
+                    "entry_price": float(signal_data.get("entry_price") or signal_data.get("price") or 0) or None,
+                    "stop_loss": float(signal_data.get("sl")) if signal_data.get("sl") else None,
+                    "take_profit_1": float(signal_data.get("tp1")) if signal_data.get("tp1") else None,
+                    "take_profit_2": float(signal_data.get("tp2")) if signal_data.get("tp2") else None,
+                    "risk_reward": float(signal_data.get("risk_reward")) if signal_data.get("risk_reward") else None,
+                    "chart_url": signal_data.get("chart_url", ""),
+                    # AI signals for display
+                    "personal_signal": signal_data.get("personal_signal", ""),
+                    "gpt4_signal": signal_data.get("gpt4_signal", ""),
+                    "claude_signal": signal_data.get("claude_signal", ""),
+                    "gemini_signal": signal_data.get("gemini_signal", ""),
+                    "grok_signal": signal_data.get("grok_signal", ""),
+                    "deepseek_signal": signal_data.get("deepseek_signal", ""),
+                }
+                signals.append(signal)
 
-        logger.info(f"📤 {len(filtered_signals)} sinyal Telegram'a gönderiliyor...")
+            # Filter by confidence
+            filtered_signals = filter_signals(signals, MIN_CONFIDENCE)
 
-        # Send to Telegram
-        success = send_signals_individually(bot_token, chat_id, filtered_signals, None, None)
+            # Filter to signals with charts if SEND_CHARTS is enabled
+            if SEND_CHARTS and filtered_signals:
+                signals_with_charts = []
+                for signal in filtered_signals:
+                    chart_url = signal.get('chart_url', '')
+                    chart_path = find_chart_for_market(signal['market']) if not chart_url else None
+                    if chart_url or chart_path:
+                        signals_with_charts.append(signal)
 
-        if success:
-            # Update Supabase status for published signals
-            for signal in filtered_signals:
-                signal_id = signal["id"]
-                update_data = {"telegram_message_id": f"sent_{int(time.time())}"}
-                if update_robot_status(signal_id, 5, update_data):
-                    processed += 1
-                    logger.info(f"  ✅ {signal['market']} yayınlandı")
+                if signals_with_charts:
+                    logger.info(f"✅ {len(signals_with_charts)}/{len(filtered_signals)} sinyal grafik ile")
+                    filtered_signals = signals_with_charts
                 else:
-                    logger.error(f"  ❌ {signal['market']} güncellenemedi")
+                    logger.warning("⚠️ Grafikli sinyal yok, tümü gönderilecek")
+
+            if not filtered_signals:
+                logger.warning(f"⚠️ Batch {batch_id}: {MIN_CONFIDENCE}% üzeri güven yok")
+                # Still mark all signals as processed (without telegram_message_id)
+                for signal in signals:
+                    update_batch_analysis(batch_id, signal['market'], 5, {"telegram_message_id": None})
+                continue
+
+            logger.info(f"📤 {len(filtered_signals)} sinyal Telegram'a gönderiliyor...")
+
+            # Send to Telegram
+            success = send_signals_individually(bot_token, chat_id, filtered_signals, None, None)
+
+            if success:
+                # Update ALL 6 sequences for published signals
+                for signal in filtered_signals:
+                    update_data = {"telegram_message_id": f"sent_{int(time.time())}"}
+                    if update_batch_analysis(batch_id, signal['market'], 5, update_data):
+                        processed += 1
+                        logger.info(f"  ✅ {signal['market']} yayınlandı (6 satır)")
+                    else:
+                        logger.error(f"  ❌ {signal['market']} güncellenemedi")
+
+                # Also mark skipped signals as processed
+                skipped_markets = set(s['market'] for s in signals) - set(s['market'] for s in filtered_signals)
+                for market in skipped_markets:
+                    update_batch_analysis(batch_id, market, 5, {"telegram_message_id": None})
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 5 TAMAMLANDI")
-        logger.info(f"   📤 Yayınlanan: {processed}/{len(filtered_signals)}")
+        logger.info(f"   📦 Batch: {len(pending_batches)}")
+        logger.info(f"   📤 Yayınlanan: {processed}/{total_markets}")
         logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 80)
 

@@ -16,7 +16,7 @@ from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.assistant_ai import create_assistant, BALANCED_PROFILE
 from utils.meta_analyzer import create_command_center
-from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.supabase_client import get_pending_batches_for_robot, update_batch_analysis, get_market_history
 from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
@@ -197,24 +197,25 @@ def read_ai_signals_from_supabase(signal: Dict) -> List[Dict]:
 
 
 def run():
-    """Main execution function for Robot 7"""
+    """Main execution function for Robot 7 - BATCH MODE"""
     logger.info("=" * 80)
-    logger.info("🎯 ROBOT 7: AI COMMAND CENTER - BAŞLAT")
+    logger.info("🎯 ROBOT 7: AI COMMAND CENTER - BATCH MODE")
     logger.info("=" * 80)
 
     processed = 0
+    total_markets = 0
     error_msg = ""
 
     try:
-        # Get pending signals from Supabase (Robot 3 AND Robot 8 completed)
-        pending_signals = get_pending_for_robot(7)
+        # Get pending BATCHES from Supabase (Robot 3 AND Robot 8 completed)
+        pending_batches = get_pending_batches_for_robot(7)
 
-        if not pending_signals:
-            logger.warning("⚠️ Robot 7 için hazır sinyal yok (Robot 3 + Robot 8 tamamlanmamış)")
+        if not pending_batches:
+            logger.info("⏳ Analiz bekleyen batch yok (Robot 7)")
             try:
                 gc = get_gspread_client()
                 sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-                update_monitoring(gc, sheet_id, 7, True, 0, "İşlenecek veri yok")
+                update_monitoring(gc, sheet_id, 7, True, 0, "Bekleyen batch yok")
             except:
                 pass
             return
@@ -223,74 +224,84 @@ def run():
         assistant = create_assistant(BALANCED_PROFILE)
         command_center = create_command_center()
 
-        logger.info(f"🎯 {len(pending_signals)} sinyal için meta-analiz başlıyor...")
+        logger.info(f"🎯 {len(pending_batches)} batch için meta-analiz başlıyor...")
 
-        for signal in pending_signals:
-            signal_id = signal["id"]
-            market = signal["market"]
-            price = float(signal["price"]) if signal["price"] else 0
+        for batch_info in pending_batches:
+            batch_id = batch_info["batch_id"]
+            markets = batch_info["markets"]
 
             logger.info(f"\n{'='*60}")
-            logger.info(f"📊 {market} @ ${price:,.2f}")
+            logger.info(f"📦 Batch: {batch_id} - {len(markets)} market")
             logger.info(f"{'='*60}")
 
-            # Read AI signals from Supabase
-            ai_signals = read_ai_signals_from_supabase(signal)
+            for market_info in markets:
+                market = market_info["market"]
+                signal = market_info["signal_data"]  # Full signal data from sequence 6
+                price = float(signal["price"]) if signal.get("price") else 0
 
-            if len(ai_signals) == 0:
-                logger.warning(f"  ⚠️ AI sinyali bulunamadı")
-                continue
+                total_markets += 1
 
-            logger.info(f"  📊 {len(ai_signals)} AI sinyali okundu")
-            for sig in ai_signals:
-                logger.info(f"    • {sig['ai_model']}: {sig['signal']} ({sig['confidence']}%)")
+                logger.info(f"\n📊 {market} @ ${price:,.2f}")
 
-            # Assistant AI evaluation
-            logger.info(f"  👤 Asistan AI değerlendirmesi...")
-            assistant_rec = assistant.evaluate_signals(market, ai_signals)
+                # Read AI signals from the signal data
+                ai_signals = read_ai_signals_from_supabase(signal)
 
-            # Command Center meta-analysis
-            logger.info(f"  🎯 Komuta Merkezi meta-analizi...")
-            final_decision = command_center.make_decision(market, price, ai_signals, assistant_rec)
+                if len(ai_signals) == 0:
+                    logger.warning(f"  ⚠️ AI sinyali bulunamadı")
+                    continue
 
-            final_signal = final_decision["final_signal"]
-            risk_level = final_decision.get("risk_level", "MEDIUM")
+                logger.info(f"  📊 {len(ai_signals)} AI sinyali okundu")
+                for sig in ai_signals:
+                    logger.info(f"    • {sig['ai_model']}: {sig['signal']} ({sig['confidence']}%)")
 
-            logger.info(f"  🎯 NİHAİ: {final_signal} ({final_decision['final_confidence']}%)")
-            logger.info(f"  ⚠️ Risk: {risk_level}")
+                # Assistant AI evaluation
+                logger.info(f"  👤 Asistan AI değerlendirmesi...")
+                assistant_rec = assistant.evaluate_signals(market, ai_signals)
 
-            # Calculate TP/SL based on volatility and risk level
-            volatility = calculate_volatility(signal)
-            tp_sl = calculate_tp_sl(price, final_signal, volatility, risk_level)
+                # Command Center meta-analysis
+                logger.info(f"  🎯 Komuta Merkezi meta-analizi...")
+                final_decision = command_center.make_decision(market, price, ai_signals, assistant_rec)
 
-            # Write to Supabase
-            update_data = {
-                "final_signal": final_signal,
-                "final_confidence": final_decision["final_confidence"],
-                "final_analysis": final_decision["reasoning"][:500],
-                "risk_level": risk_level,
-            }
+                final_signal = final_decision["final_signal"]
+                risk_level = final_decision.get("risk_level", "MEDIUM")
 
-            # Add TP/SL values (calculated locally)
-            if tp_sl.get("entry_price"):
-                update_data["entry_price"] = tp_sl["entry_price"]
-            if tp_sl.get("tp1"):
-                update_data["tp1"] = tp_sl["tp1"]
-            if tp_sl.get("tp2"):
-                update_data["tp2"] = tp_sl["tp2"]
-            if tp_sl.get("sl"):
-                update_data["sl"] = tp_sl["sl"]
+                logger.info(f"  🎯 NİHAİ: {final_signal} ({final_decision['final_confidence']}%)")
+                logger.info(f"  ⚠️ Risk: {risk_level}")
 
-            success = update_robot_status(signal_id, 7, update_data)
-            if success:
-                processed += 1
-                logger.info(f"  ✅ Signal {signal_id} güncellendi")
-            else:
-                logger.error(f"  ❌ Signal {signal_id} güncellenemedi")
+                # Calculate TP/SL based on volatility and risk level
+                volatility = calculate_volatility(signal)
+                tp_sl = calculate_tp_sl(price, final_signal, volatility, risk_level)
+
+                # Prepare update data
+                update_data = {
+                    "final_signal": final_signal,
+                    "final_confidence": final_decision["final_confidence"],
+                    "final_analysis": final_decision["reasoning"][:500],
+                    "risk_level": risk_level,
+                }
+
+                # Add TP/SL values
+                if tp_sl.get("entry_price"):
+                    update_data["entry_price"] = tp_sl["entry_price"]
+                if tp_sl.get("tp1"):
+                    update_data["tp1"] = tp_sl["tp1"]
+                if tp_sl.get("tp2"):
+                    update_data["tp2"] = tp_sl["tp2"]
+                if tp_sl.get("sl"):
+                    update_data["sl"] = tp_sl["sl"]
+
+                # Update ALL 6 sequences for this market in this batch
+                success = update_batch_analysis(batch_id, market, 7, update_data)
+                if success:
+                    processed += 1
+                    logger.info(f"  ✅ {market} güncellendi (6 satır)")
+                else:
+                    logger.error(f"  ❌ {market} güncellenemedi")
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 7 TAMAMLANDI")
-        logger.info(f"   📊 İşlenen: {processed}/{len(pending_signals)}")
+        logger.info(f"   📦 Batch: {len(pending_batches)}")
+        logger.info(f"   📊 İşlenen: {processed}/{total_markets} market")
         logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 80)
 
@@ -310,7 +321,7 @@ def run():
                 robot_number=7,
                 success=processed > 0 or not error_msg,
                 count=processed,
-                detail=f"{processed} meta-analiz" if processed else "İşlenecek veri yok",
+                detail=f"{processed} market analizi" if processed else "Bekleyen batch yok",
                 error=error_msg
             )
         except Exception as e:

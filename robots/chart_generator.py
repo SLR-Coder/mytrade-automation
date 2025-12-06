@@ -16,7 +16,7 @@ from pathlib import Path
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.api_clients import BinanceClient, PolygonClient
-from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.supabase_client import get_pending_batches_for_robot, update_batch_analysis
 from utils.monitoring import update_robot_status as update_monitoring
 
 # Google Cloud Storage for chart uploads
@@ -329,105 +329,112 @@ def create_chart(market: str, df: pd.DataFrame, signal: Dict) -> Optional[str]:
 
 
 def run():
-    """Main execution function for Robot 4"""
+    """Main execution function for Robot 4 - BATCH MODE"""
     logger.info("=" * 60)
-    logger.info("🎨 ROBOT 4: CHART GENERATOR - BAŞLAT")
+    logger.info("🎨 ROBOT 4: CHART GENERATOR - BATCH MODE")
     logger.info("=" * 60)
 
     processed = 0
+    total_markets = 0
     error_msg = ""
 
     try:
         # Ensure chart directory exists
         ensure_chart_dir()
 
-        # Get pending signals from Supabase
-        pending_signals = get_pending_for_robot(4)
+        # Get pending BATCHES from Supabase (Robot 7 completed)
+        pending_batches = get_pending_batches_for_robot(4)
 
-        if not pending_signals:
-            logger.warning("⚠️ İşlenecek sinyal yok (Robot 4 için)")
+        if not pending_batches:
+            logger.info("⏳ Bekleyen batch yok (Robot 4)")
             try:
                 gc = get_gspread_client()
                 sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-                update_monitoring(gc, sheet_id, 4, True, 0, "İşlenecek veri yok")
+                update_monitoring(gc, sheet_id, 4, True, 0, "Bekleyen batch yok")
             except:
                 pass
             return
 
-        # Filter by confidence
-        high_confidence = [s for s in pending_signals
-                         if s.get("final_confidence") and int(s["final_confidence"]) >= MIN_CONFIDENCE]
+        logger.info(f"🎯 {len(pending_batches)} batch için grafik oluşturuluyor...")
 
-        if not high_confidence:
-            logger.warning(f"⚠️ {MIN_CONFIDENCE}% üzeri güven yok")
-            try:
-                gc = get_gspread_client()
-                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-                update_monitoring(gc, sheet_id, 4, True, 0, f"Güven < {MIN_CONFIDENCE}%")
-            except:
-                pass
-            return
+        for batch_info in pending_batches:
+            batch_id = batch_info["batch_id"]
+            markets = batch_info["markets"]
 
-        logger.info(f"🎯 {len(high_confidence)} sinyal için grafik oluşturuluyor...")
+            logger.info(f"\n{'='*60}")
+            logger.info(f"📦 Batch: {batch_id} - {len(markets)} market")
+            logger.info(f"{'='*60}")
 
-        for signal_data in high_confidence:
-            signal_id = signal_data["id"]
-            market = signal_data["market"]
+            for market_info in markets:
+                market = market_info["market"]
+                signal_data = market_info["signal_data"]
 
-            # Build signal dict for chart
-            signal = {
-                "market": market,
-                "price": float(signal_data["price"]) if signal_data.get("price") else 0,
-                "ensemble_signal": signal_data.get("final_signal", "HOLD"),
-                "ensemble_confidence": int(signal_data.get("final_confidence", 0)),
-                "risk_level": signal_data.get("risk_level", "MEDIUM"),
-                "suggested_action": "SET ALERT",
-                "indicators": {
-                    "rsi": signal_data.get("rsi"),
-                    "bb_upper": signal_data.get("bb_upper"),
-                    "bb_middle": signal_data.get("bb_middle"),
-                    "bb_lower": signal_data.get("bb_lower"),
-                    "support": signal_data.get("support_1"),
-                    "resistance": signal_data.get("resistance_1"),
-                }
-            }
+                total_markets += 1
 
-            logger.info(f"\n📊 {market} ({signal['ensemble_signal']} {signal['ensemble_confidence']}%)")
-
-            try:
-                # Fetch candles
-                df = fetch_candles_for_chart(market, CHART_CANDLES)
-
-                if df is None or len(df) < 10:
-                    logger.warning(f"  ⚠️ Yetersiz veri: {market}")
+                # Check confidence threshold
+                confidence = int(signal_data.get("final_confidence", 0) or 0)
+                if confidence < MIN_CONFIDENCE:
+                    logger.info(f"  ⏭️ {market}: Güven düşük ({confidence}% < {MIN_CONFIDENCE}%)")
+                    # Still mark as processed but without chart
+                    update_batch_analysis(batch_id, market, 4, {"chart_url": None})
                     continue
 
-                # Create chart
-                chart_path = create_chart(market, df, signal)
+                # Build signal dict for chart
+                signal = {
+                    "market": market,
+                    "price": float(signal_data["price"]) if signal_data.get("price") else 0,
+                    "ensemble_signal": signal_data.get("final_signal", "HOLD"),
+                    "ensemble_confidence": confidence,
+                    "risk_level": signal_data.get("risk_level", "MEDIUM"),
+                    "suggested_action": "SET ALERT",
+                    "indicators": {
+                        "rsi": signal_data.get("rsi"),
+                        "bb_upper": signal_data.get("bb_upper"),
+                        "bb_middle": signal_data.get("bb_middle"),
+                        "bb_lower": signal_data.get("bb_lower"),
+                        "support": signal_data.get("support_1"),
+                        "resistance": signal_data.get("resistance_1"),
+                    }
+                }
 
-                if chart_path:
-                    # Upload to GCS
-                    chart_url = upload_chart_to_gcs(chart_path, market)
+                logger.info(f"\n📊 {market} ({signal['ensemble_signal']} {confidence}%)")
 
-                    # Update Supabase
-                    update_data = {"chart_url": chart_url or chart_path}
-                    success = update_robot_status(signal_id, 4, update_data)
+                try:
+                    # Fetch candles
+                    df = fetch_candles_for_chart(market, CHART_CANDLES)
 
-                    if success:
-                        processed += 1
-                        logger.info(f"  ✅ Grafik oluşturuldu")
-                    else:
-                        logger.error(f"  ❌ Supabase güncellenemedi")
+                    if df is None or len(df) < 10:
+                        logger.warning(f"  ⚠️ Yetersiz veri: {market}")
+                        update_batch_analysis(batch_id, market, 4, {"chart_url": None})
+                        continue
 
-                time.sleep(0.5)
+                    # Create chart
+                    chart_path = create_chart(market, df, signal)
 
-            except Exception as e:
-                logger.error(f"  ❌ Grafik hatası: {e}")
-                continue
+                    if chart_path:
+                        # Upload to GCS
+                        chart_url = upload_chart_to_gcs(chart_path, market)
+
+                        # Update ALL 6 sequences for this market in this batch
+                        update_data = {"chart_url": chart_url or chart_path}
+                        success = update_batch_analysis(batch_id, market, 4, update_data)
+
+                        if success:
+                            processed += 1
+                            logger.info(f"  ✅ Grafik oluşturuldu (6 satır güncellendi)")
+                        else:
+                            logger.error(f"  ❌ Supabase güncellenemedi")
+
+                    time.sleep(0.5)
+
+                except Exception as e:
+                    logger.error(f"  ❌ Grafik hatası: {e}")
+                    continue
 
         logger.info("\n" + "=" * 60)
         logger.info(f"✅ ROBOT 4 TAMAMLANDI")
-        logger.info(f"   📊 Grafik: {processed}/{len(high_confidence)}")
+        logger.info(f"   📦 Batch: {len(pending_batches)}")
+        logger.info(f"   📊 Grafik: {processed}/{total_markets}")
         logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 60)
 

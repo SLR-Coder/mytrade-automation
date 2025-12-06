@@ -371,8 +371,78 @@ def update_batch_analysis(batch_id: str, market: str, robot_number: int, data: D
         return False
 
 
+def get_pending_batches_for_robot(robot_number: int) -> List[Dict]:
+    """Get batches pending for a specific robot (BATCH-AWARE)
+
+    Only looks at sequence 6 rows (complete 30-min data).
+    Returns batches grouped by batch_id with full signal data.
+
+    Robot Dependencies:
+    - Robot 3, 8: robot1_status = completed
+    - Robot 7: robot3_status AND robot8_status = completed
+    - Robot 4: robot7_status = completed AND final_signal != null
+    - Robot 5: robot4_status = completed
+    - Robot 9: robot5_status = completed
+
+    Args:
+        robot_number: Robot number (3, 4, 5, 7, 8, 9)
+
+    Returns:
+        List of {batch_id, markets: [{market, signal_data}]} dicts
+    """
+    try:
+        supabase = get_supabase()
+        status_column = f"robot{robot_number}_status"
+
+        # Start with sequence 6 only (complete batch)
+        query = supabase.table("signals").select("*").eq(
+            "batch_sequence", 6
+        ).eq(
+            "processing_status", "ready_for_analysis"
+        )
+
+        # Add robot-specific prerequisites
+        if robot_number in [3, 8]:
+            query = query.eq("robot1_status", "completed")
+        elif robot_number == 7:
+            query = query.eq("robot3_status", "completed").eq("robot8_status", "completed")
+        elif robot_number == 4:
+            query = query.eq("robot7_status", "completed").neq("final_signal", None)
+        elif robot_number == 5:
+            query = query.eq("robot4_status", "completed")
+        elif robot_number == 9:
+            query = query.eq("robot5_status", "completed")
+
+        # This robot hasn't processed yet
+        query = query.is_(status_column, "null")
+
+        result = query.execute()
+
+        if not result.data:
+            return []
+
+        # Group by batch_id with full signal data
+        batches = {}
+        for row in result.data:
+            bid = row["batch_id"]
+            if bid not in batches:
+                batches[bid] = []
+            batches[bid].append({
+                "market": row["market"],
+                "signal_data": row  # Full row data
+            })
+
+        batch_list = [{"batch_id": bid, "markets": markets} for bid, markets in batches.items()]
+        logger.info(f"Robot {robot_number}: Found {len(batch_list)} pending batches")
+        return batch_list
+
+    except Exception as e:
+        logger.error(f"Error getting pending batches for robot {robot_number}: {e}")
+        return []
+
+
 def get_pending_for_robot(robot_number: int, limit: int = 50) -> List[Dict]:
-    """Get signals pending for a specific robot
+    """Get signals pending for a specific robot (LEGACY - use get_pending_batches_for_robot instead)
 
     Args:
         robot_number: Robot number (3, 8, 7, 4, 5)
