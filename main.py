@@ -36,13 +36,30 @@ from utils.telegram_notifier import send_error_notification, send_status_notific
 
 # Global shutdown flag
 shutdown_requested = False
+sigterm_received = False
 
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully"""
-    global shutdown_requested
-    logger.info("🛑 Shutdown signal received. Cleaning up...")
-    shutdown_requested = True
+    """Handle shutdown signals gracefully
+
+    IMPORTANT: When running as subprocess under gunicorn:
+    - SIGTERM from Cloud Run should NOT stop us immediately
+    - We should finish current work before exiting
+    - Only SIGINT (Ctrl+C) should stop immediately
+    """
+    global shutdown_requested, sigterm_received
+
+    if signum == signal.SIGINT:
+        # User pressed Ctrl+C - stop immediately
+        logger.info("🛑 SIGINT received. Stopping immediately...")
+        shutdown_requested = True
+    elif signum == signal.SIGTERM:
+        # Cloud Run shutdown - DON'T stop, just log it
+        # Let gunicorn's graceful-timeout handle the shutdown
+        sigterm_received = True
+        logger.warning("⚠️ SIGTERM received but continuing work. Will exit when done.")
+        # DO NOT set shutdown_requested = True
+        # This allows robots to complete their work
 
 
 # Register signal handlers
@@ -283,7 +300,9 @@ async def main_async():
         logger.info("=" * 70)
 
         if shutdown_requested:
-            logger.info("🛑 ZARIF KAPATMA TAMAMLANDI")
+            logger.info("🛑 ZARIF KAPATMA TAMAMLANDI (SIGINT)")
+        elif sigterm_received:
+            logger.info("🏁 OTOMASYON TAMAMLANDI (SIGTERM alındı ama işler bitti)")
         else:
             logger.info("🎉 OTOMASYON BAŞARIYLA TAMAMLANDI")
 

@@ -9,8 +9,13 @@ import os
 import sys
 import subprocess
 import logging
+import threading
 from datetime import datetime
 from flask import Flask, request, jsonify
+
+# Lock for preventing concurrent analysis pipeline runs
+analysis_pipeline_lock = threading.Lock()
+analysis_pipeline_running = False
 
 # Setup logging BEFORE any imports that might use it
 logging.basicConfig(
@@ -121,19 +126,41 @@ def analysis_pipeline():
 
     Waits for Robot 1 to complete before starting analysis.
     Robot 1 runs at :00, :05, :10... and takes ~50 seconds.
-    This endpoint should be scheduled at :02, :32 (2 min offset).
+    This endpoint should be scheduled at :27, :57 (after batch 6 completes).
+
+    IMPORTANT: This endpoint is protected against concurrent runs.
+    If another analysis pipeline is already running, this request will be rejected.
     """
+    global analysis_pipeline_running
     import time
 
-    # Check if we should wait for Robot 1
-    wait_seconds = int(request.args.get("wait", "0"))
-    if wait_seconds > 0:
-        logger.info(f"Waiting {wait_seconds}s for Robot 1 to complete...")
-        time.sleep(wait_seconds)
+    # Check for concurrent runs
+    with analysis_pipeline_lock:
+        if analysis_pipeline_running:
+            logger.warning("⚠️ Analysis Pipeline already running! Rejecting concurrent request.")
+            return jsonify({
+                "status": "rejected",
+                "error": "Analysis Pipeline already running",
+                "timestamp": datetime.now().isoformat()
+            }), 429  # Too Many Requests
+        analysis_pipeline_running = True
 
-    logger.info("Running Analysis Pipeline: Robots 3,8,7,4,5")
-    result = run_robots("3,8,7,4,5")
-    return jsonify(result), 200 if result["status"] == "success" else 500
+    try:
+        # Check if we should wait for Robot 1
+        wait_seconds = int(request.args.get("wait", "0"))
+        if wait_seconds > 0:
+            logger.info(f"Waiting {wait_seconds}s for Robot 1 to complete...")
+            time.sleep(wait_seconds)
+
+        logger.info("Running Analysis Pipeline: Robots 3,8,7,4,5")
+        result = run_robots("3,8,7,4,5")
+        return jsonify(result), 200 if result["status"] == "success" else 500
+
+    finally:
+        # Always release the lock when done
+        with analysis_pipeline_lock:
+            analysis_pipeline_running = False
+            logger.info("Analysis Pipeline lock released.")
 
 
 @app.route("/tp-sl-monitor", methods=["POST", "GET"])

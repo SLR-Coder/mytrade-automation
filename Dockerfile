@@ -69,4 +69,7 @@ USER appuser
 EXPOSE 8080
 
 # Default command - Run with gunicorn for production
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "600", "server:app"]
+# --timeout: Worker request timeout (10 min)
+# --graceful-timeout: Time to wait for workers to finish on shutdown (10 min)
+# --keep-alive: Keep connections alive for reuse
+CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "600", "--graceful-timeout", "600", "--keep-alive", "5", "server:app"]
