@@ -2,7 +2,9 @@
 
 ## SON DURUM - HIZLI OZET
 
-**KRITIK BUG BULUNDU VE DUZELTILDI: Analysis Pipeline zamanlama sorunu!**
+**2 KRITIK BUG BULUNDU VE DUZELTILDI:**
+1. Analysis Pipeline zamanlama sorunu (scheduler)
+2. Robotlar timing-dependent'di (artık ROBUST)
 
 - **Cloud Run URL**: `https://mytrade-automation-310689682340.europe-west1.run.app`
 - **Branch**: `claude/review-session-handoff-012ZpGsNTsLeNi7ZdJTtVVJ3`
@@ -79,6 +81,35 @@ Robot 1 her 5 dakikada calisir ve batch durumu yazar:
 
 Robot 3 sadece "✅ Analiz Hazır" olan satirlari isler.
 Analysis Pipeline `:27`de calisinca son batch "Analiz Hazır" olur.
+
+---
+
+## BUG 2: ROBOTLAR TIMING-DEPENDENT'DI (6 Aralik)
+
+### Problem: Robot 1 gecikince tum sistem duruyordu
+
+Robotlar sadece "son batch"e bakiyordu:
+- Robot 3/8: Son separator'dan sonraki satirlara bakiyordu
+- Robot 1 gecikince veya zamanlama kayinca, "Analiz Hazir" satirlari atlaniyordu
+
+### Cozum: ROBUST yaklasim - Zamanlama bagimsiz
+
+Yeni fonksiyonlar eklendi (`utils/common.py`):
+
+```python
+# Robot 3 ve 8 icin:
+get_unprocessed_ready_rows(ws, cols, robot_status_col, robot_name)
+# → Son 500 satirda "Analiz Hazir" OLAN ve islenMEMIS satirlari bulur
+
+# Robot 7 icin:
+get_rows_ready_for_command_center(ws, cols)
+# → Robot 3 VE Robot 8 tamamlanmis satirlari bulur
+```
+
+**Avantajlar:**
+- Zamanlama bagimsiz: Robot 1 gecikse bile calısır
+- Self-healing: Kacirilan batch'ler sonraki calısmada islenir
+- Duplikasyon yok: Robot status'u kontrol eder
 
 ---
 
