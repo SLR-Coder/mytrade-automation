@@ -21,7 +21,7 @@ from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.common import (
     get_last_6_batches, status_text, parse_float, analyze_temporal_trend,
-    is_ready_for_analysis
+    is_ready_for_analysis, get_rows_with_signals  # ROBUST: Zamanlama bağımsız satır bulma
 )  # DRY: Import from common
 from utils.telegram_formatter import get_performance_badge
 
@@ -155,56 +155,35 @@ def calculate_recent_performance(ws, cols, days: int = 30) -> Dict:
 
 def read_latest_signals(ws, cols) -> List[Dict]:
     """
-    Read latest AI signals from Google Sheets
+    Read AI signals from Google Sheets - ROBUST (timing-independent)
+
+    Uses get_rows_with_signals() to find ALL unprocessed rows with signals,
+    not just the latest batch. This works even if Robot 1 timing is off.
+
+    Also checks BO column to avoid republishing signals!
 
     Returns list of signal dicts with market data and row indices
     """
-    logger.info("Reading latest AI signals from Google Sheets...")
+    logger.info("Reading AI signals from Google Sheets (ROBUST mode)...")
 
-    all_rows = ws.get_all_values()
+    # ROBUST: Find ALL rows with signals that Robot 5 hasn't published yet
+    # BO column = Robot 5 status column
+    ready_rows = get_rows_with_signals(ws, cols, cols.BO, "Robot 5")
 
-    if len(all_rows) <= 1:
-        logger.warning("No data in sheet")
+    if not ready_rows:
+        logger.warning("⚠️ Yayınlanacak sinyal yok (Robot 5 için)")
         return []
 
-    # Find last separator (Robot 1 creates separator with "📊 VERİ TOPLAMA RAPORU" in column B)
-    separator_idx = None
-    for i in range(len(all_rows) - 1, 0, -1):
-        if len(all_rows[i]) > cols.B - 1:
-            market_value = all_rows[i][cols.B - 1]
-            if market_value and ("📊" in market_value or "RAPORU" in market_value):
-                separator_idx = i
-                break
-
-    if separator_idx is None:
-        logger.warning("Ayırıcı bulunamadı (separator not found)")
-        data_rows = all_rows[1:]
-        start_row = 2  # Row 1 is header, data starts at row 2
-    else:
-        data_rows = all_rows[separator_idx + 1:]
-        start_row = separator_idx + 2  # +1 for separator, +1 for 1-indexed
-
-    logger.info(f"Found {len(data_rows)} rows in latest batch (starting at row {start_row})")
-
+    # Parse signal data from ready rows
     signals = []
-    for idx, row in enumerate(data_rows):
-        row_index = start_row + idx
-        if len(row) < cols.B:
-            continue
+    for market_data in ready_rows:
+        row = market_data["row_data"]
+        row_index = market_data["row_index"]
+        market = market_data["market"]
+        final_signal = market_data["final_signal"]
 
-        market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
-        if not market or market == "":
-            continue
-
-        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
-        robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
-        if not is_ready_for_analysis(robot1_status):
-            continue  # Henüz hazır değil
-
-        # Check if Robot 7 Command Center has made decision (AS column)
-        final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
-        if not final_signal or final_signal == "":
-            continue
+        # NOTE: BK, AS, and BO checks are done in get_rows_with_signals()
+        # No need to check again here!
 
         try:
             price = parse_float(row[cols.C - 1]) if len(row) > cols.C - 1 else 0.0

@@ -16,7 +16,10 @@ from pathlib import Path
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
-from utils.common import status_text, parse_float, is_ready_for_analysis  # DRY: Import from common
+from utils.common import (
+    status_text, parse_float, is_ready_for_analysis,
+    get_rows_with_signals  # ROBUST: Zamanlama bağımsız satır bulma
+)  # DRY: Import from common
 from utils.api_clients import BinanceClient, PolygonClient
 
 # Google Cloud Storage for chart uploads
@@ -98,63 +101,33 @@ def upload_chart_to_gcs(local_path: str, market: str) -> Optional[str]:
 
 def read_latest_signals(ws, cols) -> List[Dict]:
     """
-    Read latest AI signals from Google Sheets
+    Read AI signals from Google Sheets - ROBUST (timing-independent)
+
+    Uses get_rows_with_signals() to find ALL unprocessed rows with signals,
+    not just the latest batch. This works even if Robot 1 timing is off.
 
     Returns list of signal dicts with market data and row indices
     """
-    logger.info("Reading latest AI signals from Google Sheets...")
+    logger.info("Reading AI signals from Google Sheets (ROBUST mode)...")
 
-    # Get all rows
-    all_rows = ws.get_all_values()
+    # ROBUST: Find ALL rows with signals that Robot 4 hasn't processed yet
+    # BN column = Robot 4 status column
+    ready_rows = get_rows_with_signals(ws, cols, cols.BN, "Robot 4")
 
-    if len(all_rows) <= 1:
-        logger.warning("No data in sheet")
+    if not ready_rows:
+        logger.warning("⚠️ İşlenecek sinyal yok (Robot 4 için)")
         return []
 
-    # Son ayırıcıyı bul (Robot 1 separator with "📊 VERİ TOPLAMA RAPORU" in column B)
-    separator_idx = None
-    for i in range(len(all_rows) - 1, 0, -1):
-        if len(all_rows[i]) > cols.B - 1:
-            market_value = all_rows[i][cols.B - 1]
-            if market_value and ("📊" in market_value or "RAPORU" in market_value):
-                separator_idx = i
-                break
-
-    if separator_idx is None:
-        logger.warning("Ayırıcı bulunamadı (separator not found)")
-        data_rows = all_rows[1:]
-        start_row = 2  # Row 1 is header, data starts at row 2
-    else:
-        data_rows = all_rows[separator_idx + 1:]
-        start_row = separator_idx + 2  # +1 for separator, +1 for 1-indexed
-
-    logger.info(f"Found {len(data_rows)} rows in latest batch (starting at row {start_row})")
-
-    # Parse signal data
+    # Parse signal data from ready rows
     signals = []
-    for idx, row in enumerate(data_rows):
-        row_index = start_row + idx
-        if len(row) < cols.B:
-            continue
+    for market_data in ready_rows:
+        row = market_data["row_data"]
+        row_index = market_data["row_index"]
+        market = market_data["market"]
+        final_signal = market_data["final_signal"]
 
-        market = row[cols.B - 1] if len(row) > cols.B - 1 else ""
-        if not market or market == "":
-            continue
-
-        # Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
-        robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
-        if not is_ready_for_analysis(robot1_status):
-            continue  # Henüz hazır değil
-
-        # Check if Robot 4 already processed this row (BN column)
-        robot4_status = row[cols.BN - 1] if len(row) > cols.BN - 1 else ""
-        if robot4_status and "✅" in robot4_status:
-            continue  # Already processed by Robot 4
-
-        # Check if this row has Robot 7 Command Center decision (AS column)
-        final_signal = row[cols.AS - 1] if len(row) > cols.AS - 1 else ""
-        if not final_signal or final_signal == "":
-            continue  # Skip rows without Robot 7 decision
+        # NOTE: BK, AS, and BN checks are done in get_rows_with_signals()
+        # No need to check again here!
 
         try:
             # Parse data (handle Turkish decimal format)
