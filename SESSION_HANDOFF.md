@@ -2,13 +2,14 @@
 
 ## SON DURUM - HIZLI OZET
 
-**2 KRITIK BUG BULUNDU VE DUZELTILDI:**
+**3 KRITIK IYILESTIRME:**
 1. Analysis Pipeline zamanlama sorunu (scheduler)
 2. Robotlar timing-dependent'di (artık ROBUST)
+3. **YENİ:** Separator satırı status takibi (observability)
 
 - **Cloud Run URL**: `https://mytrade-automation-310689682340.europe-west1.run.app`
 - **Branch**: `claude/review-session-handoff-012ZpGsNTsLeNi7ZdJTtVVJ3`
-- **Son Commit**: Fix scheduler timing for analysis pipeline
+- **Son Commit**: Add separator row status tracking for observability
 
 ---
 
@@ -110,6 +111,42 @@ get_rows_ready_for_command_center(ws, cols)
 - Zamanlama bagimsiz: Robot 1 gecikse bile calısır
 - Self-healing: Kacirilan batch'ler sonraki calısmada islenir
 - Duplikasyon yok: Robot status'u kontrol eder
+
+---
+
+## YENI: SEPARATOR SATIRI STATUS TAKIBI (6 Aralik)
+
+### Problem: Robot calisti mi calismadi mi anlasilmiyordu
+
+Eskiden robot 0 satir islerse hicbir iz birakmiyordu. Robot calismis ama bisey islememis mi, yoksa hic calismamis mi anlasilmiyordu.
+
+### Cozum: update_separator_status() fonksiyonu
+
+Artik her robot calismasi sonunda separator satirina durum yazıyor:
+
+```
+"Robot 3 ✅ (24)" = Robot 3 calisti ve 24 satir isledi
+"Robot 3 ✅ (0)"  = Robot 3 calisti ama islenecek satir bulamadi
+(bos)            = Robot 3 hic calismadi
+```
+
+**Eklenen fonksiyonlar (`utils/common.py`):**
+```python
+status_text_with_count(robot_no, ok, count)
+update_separator_status(ws, cols, robot_no, processed_count)
+```
+
+**Guncellenen robotlar:**
+- Robot 3 (ai_signal_generator.py)
+- Robot 4 (chart_generator.py)
+- Robot 5 (telegram_publisher.py)
+- Robot 7 (ai_command_center.py)
+- Robot 8 (personal_ai_analyst.py)
+
+**Avantajlar:**
+- Observability: Her robotun calismasi takip edilebilir
+- Debugging: Hangi robot ne zaman calisti gorulebilir
+- Transparency: 0 satir islemek artik bir sorun degil, gorunur
 
 ---
 
