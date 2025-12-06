@@ -383,37 +383,48 @@ def format_single_signal(signal: Dict, index: int, temporal_trend: Dict = None, 
     message += f"{emoji} <b>#{index} • {signal['market']} - {position_text}</b>\n"
     message += f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    # Entry/TP/SL Section (Hybrid Format - Compact but Clear)
-    if signal.get('entry_price'):
-        message += f"<b>🛒 GİRİŞ:</b> ${signal['entry_price']:,.2f}\n"
+    # Current Price
+    price = signal.get('price', 0)
+    message += f"<b>💵 Fiyat:</b> ${price:,.2f}"
+    if signal.get('change_pct'):
+        change = signal['change_pct']
+        change_emoji = "📈" if change > 0 else "📉"
+        message += f" ({change_emoji}{change:+.2f}%)"
+    message += "\n\n"
 
-        # Targets (TP1 and TP2)
-        if signal.get('take_profit_1') or signal.get('take_profit_2'):
-            message += f"<b>🎯 HEDEFLER:</b>\n"
-            if signal.get('take_profit_1'):
-                message += f"   TP1: ${signal['take_profit_1']:,.2f}\n"
-            if signal.get('take_profit_2'):
-                message += f"   TP2: ${signal['take_profit_2']:,.2f}\n"
+    # Trading Levels Section (Entry/TP/SL) - Only for BUY/SELL
+    if signal['ensemble_signal'] != "HOLD":
+        entry = signal.get('entry_price') or price
+        tp1 = signal.get('take_profit_1')
+        tp2 = signal.get('take_profit_2')
+        sl = signal.get('stop_loss')
+        rr = signal.get('risk_reward')
 
-        # Stop Loss
-        if signal.get('stop_loss'):
-            message += f"<b>🚨 STOP LOSS:</b> ${signal['stop_loss']:,.2f}\n"
+        if entry and (tp1 or sl):
+            message += f"<b>📍 İŞLEM SEVİYELERİ:</b>\n"
+            message += f"├─ 🛒 Giriş: <b>${entry:,.2f}</b>\n"
 
-        # Risk/Reward
-        if signal.get('risk_reward'):
-            message += f"<b>⚖️ Risk/Reward:</b> 1:{signal['risk_reward']:.2f}\n"
+            # TP1 with percentage
+            if tp1:
+                tp1_pct = ((tp1 - entry) / entry * 100) if signal['ensemble_signal'] == "BUY" else ((entry - tp1) / entry * 100)
+                message += f"├─ 🎯 TP1: ${tp1:,.2f} <i>(+{abs(tp1_pct):.1f}%)</i>\n"
 
-        message += "\n"
-    else:
-        # Fallback: Show current price
-        message += f"<b>💵 Fiyat:</b> ${signal['price']:,.2f}"
+            # TP2 with percentage
+            if tp2:
+                tp2_pct = ((tp2 - entry) / entry * 100) if signal['ensemble_signal'] == "BUY" else ((entry - tp2) / entry * 100)
+                message += f"├─ 🎯 TP2: ${tp2:,.2f} <i>(+{abs(tp2_pct):.1f}%)</i>\n"
 
-        # Change percentage if available
-        if signal.get('change_pct'):
-            change = signal['change_pct']
-            change_emoji = "📈" if change > 0 else "📉"
-            message += f" ({change_emoji}{change:+.2f}%)"
-        message += "\n\n"
+            # SL with percentage
+            if sl:
+                sl_pct = abs((sl - entry) / entry * 100)
+                message += f"├─ 🚨 SL: ${sl:,.2f} <i>(-{sl_pct:.1f}%)</i>\n"
+
+            # Risk/Reward
+            if rr:
+                rr_emoji = "✅" if rr >= 1.5 else "⚠️" if rr >= 1.0 else "❌"
+                message += f"└─ ⚖️ R:R = <b>1:{rr:.2f}</b> {rr_emoji}\n"
+
+            message += "\n"
 
     # Analysis Section (Compact Hybrid Format)
     message += f"<b>📊 ANALİZ:</b>\n"
