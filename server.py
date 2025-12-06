@@ -60,6 +60,27 @@ def run_endpoint():
     return jsonify(result), status_code
 
 
+@app.route("/robot/<int:robot_id>", methods=["POST", "GET"])
+def run_single_robot(robot_id: int):
+    """
+    Run a single robot by ID
+
+    Args:
+        robot_id: Robot number (1-9)
+    """
+    if robot_id < 1 or robot_id > 9:
+        return jsonify({
+            "status": "error",
+            "error": f"Invalid robot ID: {robot_id}. Must be 1-9."
+        }), 400
+
+    logger.info(f"Running Robot {robot_id}")
+    result = run_robots(str(robot_id))
+
+    status_code = 200 if result["status"] == "success" else 500
+    return jsonify(result), status_code
+
+
 def run_robots(robot_ids: str) -> dict:
     """Run specified robots"""
     start_time = datetime.now()
