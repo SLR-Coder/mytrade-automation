@@ -31,6 +31,8 @@ from utils.claude_wrapper import get_claude_signal
 from utils.openai_wrapper import get_openai_signal
 from utils.grok_wrapper import get_grok_signal
 from utils.gemini_wrapper import get_gemini_signal
+from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-3-AISignalGenerator")
@@ -126,134 +128,123 @@ def calculate_risk_reward(price: float, signal: str, indicators: Dict):
 async def run():
     """Main execution function for Robot 3"""
     logger.info("=" * 80)
-    logger.info("🤖 ROBOT 3: AI SIGNAL GENERATOR (TEMPORAL TREND ANALİZİ) - BAŞLAT")
+    logger.info("🤖 ROBOT 3: AI SIGNAL GENERATOR - BAŞLAT")
     logger.info("=" * 80)
 
-    try:
-        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-        gc = get_gspread_client()
-        ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
-        cols = resolve_columns(ws)
+    processed = 0
+    error_msg = ""
 
-        # ROBUST APPROACH: Find ALL unprocessed "Analiz Hazır" rows
-        # This is TIMING-INDEPENDENT - works even if Robot 1 is delayed!
-        # BM column = Robot 3 status column
-        markets_data = get_unprocessed_ready_rows(ws, cols, cols.BM, "Robot 3")
-        if not markets_data:
-            logger.warning("⚠️ İşlenecek 'Analiz Hazır' satır yok (Robot 3 için)")
-            # Still update separator row to show robot ran (with 0 processed)
-            update_separator_status(ws, cols, 3, 0)
+    try:
+        # Get pending signals from Supabase
+        pending_signals = get_pending_for_robot(3)
+
+        if not pending_signals:
+            logger.warning("⚠️ İşlenecek sinyal yok (Robot 3 için)")
+            # Update monitoring
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 3, True, 0, "İşlenecek veri yok")
+            except:
+                pass
             return
 
-        # Read temporal data (last 6 batches for trend analysis)
-        temporal_data = get_last_6_batches(ws, cols)
+        logger.info(f"🎯 {len(pending_signals)} sinyal için AI analizi başlıyor...")
 
-        logger.info(f"\n🎯 {len(markets_data)} piyasa için TEMPORAL TREND analizi başlıyor...\n")
+        for signal in pending_signals:
+            signal_id = signal["id"]
+            market = signal["market"]
+            price = float(signal["price"]) if signal["price"] else 0
 
-        processed = 0
-
-        for market_data in markets_data:
-            market = market_data["market"]
-            price = market_data["price"]
-            indicators = market_data["indicators"]
-            row_index = market_data["row_index"]
-
-            # NOTE: BK and BM checks are now done in get_unprocessed_ready_rows()
-            # No need to check again here!
-
-            # Analyze temporal trend (last 30 minutes)
-            temporal_summary = "İlk analiz - henüz geçmiş veri yok"
-            if market in temporal_data and temporal_data[market]:
-                temporal_summary = analyze_temporal_trend(temporal_data[market])
-                logger.info(f"  📈 {temporal_summary}")
-
-            # Add temporal summary to indicators (AI'lar bunu görecek)
-            indicators_with_trend = indicators.copy()
-            indicators_with_trend['temporal_summary'] = temporal_summary
+            # Build indicators dict from signal data
+            indicators = {
+                "rsi": signal.get("rsi"),
+                "macd": signal.get("macd"),
+                "macd_signal": signal.get("macd_signal"),
+                "bb_upper": signal.get("bb_upper"),
+                "bb_middle": signal.get("bb_middle"),
+                "bb_lower": signal.get("bb_lower"),
+                "ema_9": signal.get("ema_9"),
+                "ema_21": signal.get("ema_21"),
+                "support_1": signal.get("support_1"),
+                "resistance_1": signal.get("resistance_1"),
+                "atr": signal.get("atr"),
+            }
 
             logger.info(f"\n{'='*60}")
             logger.info(f"📊 {market} @ ${price:,.2f}")
             logger.info(f"{'='*60}")
 
-            # Collect AI signals (parallel) - temporal_summary artık indicators içinde
-            ai_signals = await collect_ai_signals(market, price, indicators_with_trend)
+            # Collect AI signals (parallel)
+            ai_signals = await collect_ai_signals(market, price, indicators)
 
-            # Write to Google Sheets - Her AI için 2 sütun: Sinyal + Analiz
-            try:
-                # GPT-4 (AI-AJ sütunları: sinyal + analiz)
-                if ai_signals.get("gpt4"):
-                    gpt = ai_signals["gpt4"]
-                    ws.update_cell(row_index, cols.AI, f"{gpt['signal']} ({gpt['confidence']}%)")
-                    ws.update_cell(row_index, cols.AJ, gpt['reasoning'][:MAX_REASONING_LENGTH])
+            # Prepare data for Supabase update
+            update_data = {}
 
-                # Claude (AK-AL sütunları: sinyal + analiz)
-                if ai_signals.get("claude"):
-                    cl = ai_signals["claude"]
-                    ws.update_cell(row_index, cols.AK, f"{cl['signal']} ({cl['confidence']}%)")
-                    ws.update_cell(row_index, cols.AL, cl['reasoning'][:MAX_REASONING_LENGTH])
+            # DeepSeek
+            if ai_signals.get("deepseek"):
+                ds = ai_signals["deepseek"]
+                update_data["deepseek_signal"] = ds["signal"]
+                update_data["deepseek_confidence"] = ds["confidence"]
+                update_data["deepseek_analysis"] = ds["reasoning"][:500]
 
-                # Gemini (AM-AN sütunları: sinyal + analiz)
-                if ai_signals.get("gemini"):
-                    gem = ai_signals["gemini"]
-                    ws.update_cell(row_index, cols.AM, f"{gem['signal']} ({gem['confidence']}%)")
-                    ws.update_cell(row_index, cols.AN, gem['reasoning'][:MAX_REASONING_LENGTH])
+            # Claude
+            if ai_signals.get("claude"):
+                cl = ai_signals["claude"]
+                update_data["claude_signal"] = cl["signal"]
+                update_data["claude_confidence"] = cl["confidence"]
+                update_data["claude_analysis"] = cl["reasoning"][:500]
 
-                # Grok (AO-AP sütunları: sinyal + analiz)
-                if ai_signals.get("grok"):
-                    grk = ai_signals["grok"]
-                    ws.update_cell(row_index, cols.AO, f"{grk['signal']} ({grk['confidence']}%)")
-                    ws.update_cell(row_index, cols.AP, grk['reasoning'][:MAX_REASONING_LENGTH])
+            # GPT-4
+            if ai_signals.get("gpt4"):
+                gpt = ai_signals["gpt4"]
+                update_data["gpt4_signal"] = gpt["signal"]
+                update_data["gpt4_confidence"] = gpt["confidence"]
+                update_data["gpt4_analysis"] = gpt["reasoning"][:500]
 
-                # DeepSeek (AQ-AR sütunları: sinyal + analiz)
-                if ai_signals.get("deepseek"):
-                    ds = ai_signals["deepseek"]
-                    ws.update_cell(row_index, cols.AQ, f"{ds['signal']} ({ds['confidence']}%)")
-                    ws.update_cell(row_index, cols.AR, ds['reasoning'][:MAX_REASONING_LENGTH])
+            # Grok
+            if ai_signals.get("grok"):
+                grk = ai_signals["grok"]
+                update_data["grok_signal"] = grk["signal"]
+                update_data["grok_confidence"] = grk["confidence"]
+                update_data["grok_analysis"] = grk["reasoning"][:500]
 
-                # Calculate majority signal for risk calculation
-                signals_list = [s for s in ai_signals.values() if s]
-                if signals_list:
-                    buy_count = sum(1 for s in signals_list if s['signal'] == 'BUY')
-                    sell_count = sum(1 for s in signals_list if s['signal'] == 'SELL')
-
-                    if buy_count > sell_count:
-                        majority = "BUY"
-                    elif sell_count > buy_count:
-                        majority = "SELL"
-                    else:
-                        majority = "HOLD"
-
-                    # Risk management (AY-BC for Entry/SL/TP/RR)
-                    entry, sl, tp1, tp2, rr = calculate_risk_reward(price, majority, indicators)
-                    if entry:
-                        ws.update_cell(row_index, cols.AY, f"${entry:,.2f}")  # Giriş Fiyatı
-                        ws.update_cell(row_index, cols.AZ, f"${sl:,.2f}")     # Zarar Durdur
-                        ws.update_cell(row_index, cols.BA, f"${tp1:,.2f}")    # Kar Al 1
-                        ws.update_cell(row_index, cols.BB, f"${tp2:,.2f}")    # Kar Al 2
-                        ws.update_cell(row_index, cols.BC, f"{rr:.2f}")       # Risk/Ödül
-
-                # Status (Robot 3: BM sütunu)
-                ws.update_cell(row_index, cols.BM, status_text(3, True))
-
-                processed += 1
-                logger.info(f"  ✓ Satır {row_index} güncellendi")
-                time.sleep(SHEETS_RATE_LIMIT_SLEEP)  # Rate limiting
-
-            except Exception as e:
-                logger.error(f"  ❌ Sheets yazma hatası {market}: {e}")
-                continue
+            # Write to Supabase
+            if update_data:
+                success = update_robot_status(signal_id, 3, update_data)
+                if success:
+                    processed += 1
+                    logger.info(f"  ✅ Signal {signal_id} güncellendi")
+                else:
+                    logger.error(f"  ❌ Signal {signal_id} güncellenemedi")
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 3 TAMAMLANDI")
-        logger.info(f"  İşlenen piyasa: {processed}/{len(markets_data)}")
+        logger.info(f"   📊 İşlenen: {processed}/{len(pending_signals)}")
+        logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 80)
 
-        # Update separator row status (even if 0 rows processed)
-        update_separator_status(ws, cols, 3, processed)
-
     except Exception as e:
+        error_msg = str(e)[:50]
         logger.error(f"❌ ROBOT 3 BAŞARISIZ: {e}", exc_info=True)
         raise
+
+    finally:
+        # Update monitoring dashboard
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=3,
+                success=processed > 0 or not error_msg,
+                count=processed,
+                detail=f"{processed} AI analizi" if processed else "İşlenecek veri yok",
+                error=error_msg
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
 
 
 if __name__ == "__main__":

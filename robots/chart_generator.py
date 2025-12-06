@@ -15,13 +15,9 @@ from pathlib import Path
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.schema import resolve_columns
-from utils.common import (
-    status_text, parse_float, is_ready_for_analysis,
-    get_rows_with_signals,  # ROBUST: Zamanlama bağımsız satır bulma
-    update_separator_status  # Separator satırına robot durumu yaz
-)  # DRY: Import from common
 from utils.api_clients import BinanceClient, PolygonClient
+from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.monitoring import update_robot_status as update_monitoring
 
 # Google Cloud Storage for chart uploads
 try:
@@ -335,120 +331,127 @@ def create_chart(market: str, df: pd.DataFrame, signal: Dict) -> Optional[str]:
 def run():
     """Main execution function for Robot 4"""
     logger.info("=" * 60)
-    logger.info("ROBOT 4: CHART GENERATOR - STARTING")
+    logger.info("🎨 ROBOT 4: CHART GENERATOR - BAŞLAT")
     logger.info("=" * 60)
+
+    processed = 0
+    error_msg = ""
 
     try:
         # Ensure chart directory exists
         ensure_chart_dir()
 
-        # Get secrets
-        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+        # Get pending signals from Supabase
+        pending_signals = get_pending_for_robot(4)
 
-        # Get Google Sheets client
-        gc = get_gspread_client()
-        ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
-        cols = resolve_columns(ws)
-
-        logger.info(f"Connected to Google Sheet: {SHEET_TAB}")
-
-        # Read latest signals
-        signals = read_latest_signals(ws, cols)
-
-        if not signals:
-            logger.warning("⚠ No AI signals found in sheet")
-            # Still update separator row to show robot ran (with 0 processed)
-            update_separator_status(ws, cols, 4, 0)
+        if not pending_signals:
+            logger.warning("⚠️ İşlenecek sinyal yok (Robot 4 için)")
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 4, True, 0, "İşlenecek veri yok")
+            except:
+                pass
             return
 
         # Filter by confidence
-        high_confidence_signals = [s for s in signals if s['ensemble_confidence'] >= MIN_CONFIDENCE]
+        high_confidence = [s for s in pending_signals
+                         if s.get("final_confidence") and int(s["final_confidence"]) >= MIN_CONFIDENCE]
 
-        if not high_confidence_signals:
-            logger.warning(f"⚠ No signals above {MIN_CONFIDENCE}% confidence")
-            # Still update separator row to show robot ran (with 0 processed)
-            update_separator_status(ws, cols, 4, 0)
+        if not high_confidence:
+            logger.warning(f"⚠️ {MIN_CONFIDENCE}% üzeri güven yok")
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 4, True, 0, f"Güven < {MIN_CONFIDENCE}%")
+            except:
+                pass
             return
 
-        logger.info(f"Creating charts for {len(high_confidence_signals)} high-confidence signals...")
+        logger.info(f"🎯 {len(high_confidence)} sinyal için grafik oluşturuluyor...")
 
-        successful = 0
-        failed = 0
-        chart_results = []  # Track row_index and chart_url pairs
+        for signal_data in high_confidence:
+            signal_id = signal_data["id"]
+            market = signal_data["market"]
 
-        for signal in high_confidence_signals:
+            # Build signal dict for chart
+            signal = {
+                "market": market,
+                "price": float(signal_data["price"]) if signal_data.get("price") else 0,
+                "ensemble_signal": signal_data.get("final_signal", "HOLD"),
+                "ensemble_confidence": int(signal_data.get("final_confidence", 0)),
+                "risk_level": signal_data.get("risk_level", "MEDIUM"),
+                "suggested_action": "SET ALERT",
+                "indicators": {
+                    "rsi": signal_data.get("rsi"),
+                    "bb_upper": signal_data.get("bb_upper"),
+                    "bb_middle": signal_data.get("bb_middle"),
+                    "bb_lower": signal_data.get("bb_lower"),
+                    "support": signal_data.get("support_1"),
+                    "resistance": signal_data.get("resistance_1"),
+                }
+            }
+
+            logger.info(f"\n📊 {market} ({signal['ensemble_signal']} {signal['ensemble_confidence']}%)")
+
             try:
                 # Fetch candles
-                df = fetch_candles_for_chart(signal['market'], CHART_CANDLES)
+                df = fetch_candles_for_chart(market, CHART_CANDLES)
 
                 if df is None or len(df) < 10:
-                    logger.warning(f"Insufficient data for {signal['market']}")
-                    failed += 1
+                    logger.warning(f"  ⚠️ Yetersiz veri: {market}")
                     continue
 
                 # Create chart
-                chart_path = create_chart(signal['market'], df, signal)
+                chart_path = create_chart(market, df, signal)
 
                 if chart_path:
-                    # Upload to GCS and get public URL
-                    chart_url = upload_chart_to_gcs(chart_path, signal['market'])
+                    # Upload to GCS
+                    chart_url = upload_chart_to_gcs(chart_path, market)
 
-                    successful += 1
-                    chart_results.append({
-                        'row_index': signal['row_index'],
-                        'chart_url': chart_url or chart_path  # Fallback to local path if GCS fails
-                    })
-                else:
-                    failed += 1
+                    # Update Supabase
+                    update_data = {"chart_url": chart_url or chart_path}
+                    success = update_robot_status(signal_id, 4, update_data)
 
-                # Rate limiting
+                    if success:
+                        processed += 1
+                        logger.info(f"  ✅ Grafik oluşturuldu")
+                    else:
+                        logger.error(f"  ❌ Supabase güncellenemedi")
+
                 time.sleep(0.5)
 
             except Exception as e:
-                logger.error(f"Failed to process {signal['market']}: {e}")
-                failed += 1
+                logger.error(f"  ❌ Grafik hatası: {e}")
                 continue
 
-        # Update Google Sheets: Chart URL (BD) and Robot 4 status (BN)
-        if chart_results:
-            logger.info("Updating Google Sheets with chart URLs...")
-            updated = 0
-            for result in chart_results:
-                try:
-                    row_idx = result['row_index']
-                    chart_url = result['chart_url']
-
-                    # Write chart URL to BT column (Grafik URL)
-                    if chart_url and chart_url.startswith('http'):
-                        ws.update_cell(row_idx, cols.BT, chart_url)
-                        logger.info(f"  Row {row_idx}: Chart URL written to BT")
-
-                    # Update Robot 4 status (BN column)
-                    ws.update_cell(row_idx, cols.BN, status_text(4, True))
-                    updated += 1
-
-                    time.sleep(0.3)  # Rate limiting for Sheets API
-
-                except Exception as e:
-                    logger.warning(f"Failed to update row {row_idx}: {e}")
-                    continue
-
-            logger.info(f"✓ Updated {updated}/{len(chart_results)} rows with Chart URL + Robot 4 ✅")
-
-        # Summary
+        logger.info("\n" + "=" * 60)
+        logger.info(f"✅ ROBOT 4 TAMAMLANDI")
+        logger.info(f"   📊 Grafik: {processed}/{len(high_confidence)}")
+        logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 60)
-        logger.info(f"✓ ROBOT 4 COMPLETED!")
-        logger.info(f"  Charts created: {successful}/{len(high_confidence_signals)}")
-        logger.info(f"  Failed: {failed}/{len(high_confidence_signals)}")
-        logger.info(f"  Chart directory: {CHART_DIR}")
-        logger.info("=" * 60)
-
-        # Update separator row status (even if 0 charts created)
-        update_separator_status(ws, cols, 4, successful)
 
     except Exception as e:
-        logger.error(f"❌ ROBOT 4 FAILED: {e}", exc_info=True)
+        error_msg = str(e)[:50]
+        logger.error(f"❌ ROBOT 4 BAŞARISIZ: {e}", exc_info=True)
         raise
+
+    finally:
+        # Update monitoring dashboard
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=4,
+                success=processed > 0 or not error_msg,
+                count=processed,
+                detail=f"{processed} grafik" if processed else "İşlenecek veri yok",
+                error=error_msg
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
 
 
 if __name__ == "__main__":

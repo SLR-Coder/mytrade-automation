@@ -12,51 +12,38 @@ from typing import Dict, List
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.schema import resolve_columns
 from utils.assistant_ai import create_personal_analyst
-from utils.common import (
-    get_latest_market_data, get_last_6_batches, status_text, analyze_temporal_trend,
-    is_ready_for_analysis, BATCH_STATUS_READY,
-    get_unprocessed_ready_rows,  # ROBUST: Zamanlama bağımsız satır bulma
-    update_separator_status  # Separator satırına robot durumu yaz
-)  # DRY: All common functions from single source
+from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-8-PersonalAIAnalyst")
 
-SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
-
-
-# analyze_temporal_trend removed - now imported from utils.common
-
-
 def run():
     """Main execution function for Robot 8"""
     logger.info("=" * 80)
-    logger.info("ROBOT 8: PERSONAL AI ANALYST (TEMPORAL TREND ANALİZİ) - BAŞLAT")
+    logger.info("🤖 ROBOT 8: PERSONAL AI ANALYST - BAŞLAT")
     logger.info("=" * 80)
 
-    try:
-        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-        gc = get_gspread_client()
-        ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
-        cols = resolve_columns(ws)
+    processed = 0
+    error_msg = ""
 
-        # ROBUST APPROACH: Find ALL unprocessed "Analiz Hazır" rows
-        # This is TIMING-INDEPENDENT - works even if Robot 1 is delayed!
-        # BR column = Robot 8 status column
-        markets_data = get_unprocessed_ready_rows(ws, cols, cols.BR, "Robot 8")
-        if not markets_data:
-            logger.warning("⚠️ İşlenecek 'Analiz Hazır' satır yok (Robot 8 için)")
-            # Still update separator row to show robot ran (with 0 processed)
-            update_separator_status(ws, cols, 8, 0)
+    try:
+        # Get pending signals from Supabase
+        pending_signals = get_pending_for_robot(8)
+
+        if not pending_signals:
+            logger.warning("⚠️ İşlenecek sinyal yok (Robot 8 için)")
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 8, True, 0, "İşlenecek veri yok")
+            except:
+                pass
             return
 
-        # Read temporal data (last 6 batches for trend analysis)
-        temporal_data = get_last_6_batches(ws, cols)
-
-        # Robot 8: ALWAYS uses Gemini 2.5 Pro with user's custom prompt
-        ai_model = "gemini"  # FIXED: Always Gemini
+        # Robot 8: ALWAYS uses Gemini with user's custom prompt
+        ai_model = "gemini"
         custom_prompt = os.getenv("PERSONAL_AI_CUSTOM_PROMPT", None)
 
         analyst = create_personal_analyst(
@@ -64,78 +51,79 @@ def run():
             custom_prompt=custom_prompt
         )
 
-        logger.info(f"\n🎯 {len(markets_data)} piyasa için TEMPORAL TREND analizi başlıyor...")
-        logger.info(f"  AI Model: GEMINI 2.5 PRO (Jirad Fusion)")
-        if custom_prompt:
-            logger.info(f"  Custom Prompt: {custom_prompt[:100]}...")
-        else:
-            logger.info(f"  Using default Jirad Fusion Multi-Engine prompt")
+        logger.info(f"🎯 {len(pending_signals)} sinyal için Personal AI analizi başlıyor...")
+        logger.info(f"   AI Model: GEMINI 2.5 PRO")
 
-        processed = 0
+        for signal in pending_signals:
+            signal_id = signal["id"]
+            market = signal["market"]
+            price = float(signal["price"]) if signal["price"] else 0
 
-        for market_data in markets_data:
-            market = market_data["market"]
-            price = market_data["price"]
-            indicators = market_data["indicators"]
-            row_index = market_data["row_index"]
-
-            # NOTE: BK and BR checks are now done in get_unprocessed_ready_rows()
-            # No need to check again here!
-
-            # Analyze temporal trend (last 30 minutes)
-            temporal_summary = "İlk analiz - henüz geçmiş veri yok"
-            if market in temporal_data and temporal_data[market]:
-                temporal_summary = analyze_temporal_trend(temporal_data[market])
-                logger.info(f"  📈 {temporal_summary}")
-
-            # Add temporal summary to indicators (Personal AI will see this)
-            indicators_with_trend = indicators.copy()
-            indicators_with_trend['temporal_summary'] = temporal_summary
+            # Build indicators dict from signal data
+            indicators = {
+                "rsi": signal.get("rsi"),
+                "macd": signal.get("macd"),
+                "macd_signal": signal.get("macd_signal"),
+                "bb_upper": signal.get("bb_upper"),
+                "bb_middle": signal.get("bb_middle"),
+                "bb_lower": signal.get("bb_lower"),
+                "ema_9": signal.get("ema_9"),
+                "ema_21": signal.get("ema_21"),
+            }
 
             logger.info(f"\n{'='*60}")
             logger.info(f"📊 {market} @ ${price:,.2f}")
             logger.info(f"{'='*60}")
 
-            # Get personal AI analysis with temporal context
-            analysis = analyst.analyze(market, price, indicators_with_trend)
+            # Get personal AI analysis
+            analysis = analyst.analyze(market, price, indicators)
 
             if not analysis:
-                logger.warning(f"  Kisisel AI analizi basarisiz: {market}")
+                logger.warning(f"  ⚠️ Personal AI analizi başarısız: {market}")
                 continue
 
-            # Write to Google Sheets (AG-AH columns: Asistan AI Sinyal + Analiz)
-            try:
-                # AG: Signal + Confidence (Asistan AI Sinyal)
-                ws.update_cell(row_index, cols.AG, f"{analysis['signal']} ({analysis['confidence']}%)")
+            # Write to Supabase
+            update_data = {
+                "personal_signal": analysis["signal"],
+                "personal_confidence": analysis["confidence"],
+                "personal_analysis": analysis["reasoning"][:500]
+            }
 
-                # AH: Detailed reasoning (Asistan AI Analizi)
-                ws.update_cell(row_index, cols.AH, analysis['reasoning'][:500])  # Truncate to 500 chars
-
-                # Update status (Robot 8: BR sütunu)
-                ws.update_cell(row_index, cols.BR, status_text(8, True))
-
+            success = update_robot_status(signal_id, 8, update_data)
+            if success:
                 processed += 1
-                logger.info(f"  {analysis['signal']} ({analysis['confidence']}%)")
+                logger.info(f"  ✅ {analysis['signal']} ({analysis['confidence']}%)")
                 logger.info(f"  {analysis['reasoning'][:100]}...")
-                logger.info(f"  Satir {row_index} guncellendi")
-
-                time.sleep(0.5)  # Rate limiting
-
-            except Exception as e:
-                logger.error(f"  Sheets yazma hatasi {market}: {e}")
-                continue
+            else:
+                logger.error(f"  ❌ Signal {signal_id} güncellenemedi")
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 8 TAMAMLANDI")
-        logger.info(f"  İşlenen piyasa: {processed}/{len(markets_data)}")
+        logger.info(f"   📊 İşlenen: {processed}/{len(pending_signals)}")
+        logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 80)
 
-        # Update separator row status (even if 0 rows processed)
-        update_separator_status(ws, cols, 8, processed)
-
     except Exception as e:
-        logger.error(f"ROBOT 8 BASARISIZ: {e}", exc_info=True)
+        error_msg = str(e)[:50]
+        logger.error(f"❌ ROBOT 8 BAŞARISIZ: {e}", exc_info=True)
         raise
+
+    finally:
+        # Update monitoring dashboard
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=8,
+                success=processed > 0 or not error_msg,
+                count=processed,
+                detail=f"{processed} Personal AI analizi" if processed else "İşlenecek veri yok",
+                error=error_msg
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
 
 
 if __name__ == "__main__":

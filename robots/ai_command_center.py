@@ -13,242 +13,175 @@ from typing import Dict, List, Optional
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.schema import resolve_columns
-from utils.common import (
-    status_text, is_ready_for_analysis, BATCH_STATUS_READY,
-    get_rows_ready_for_command_center,  # ROBUST: Zamanlama bağımsız satır bulma
-    update_separator_status  # Separator satırına robot durumu yaz
-)  # DRY: Import from common
 from utils.assistant_ai import create_assistant, BALANCED_PROFILE
 from utils.meta_analyzer import create_command_center
+from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-7-AICommandCenter")
 
-# Environment variables
-SHEET_TAB = os.getenv("SHEET_TAB", "MarketData")
-
-
-def parse_ai_column(value: str, ai_name: str) -> Optional[Dict]:
+def read_ai_signals_from_supabase(signal: Dict) -> List[Dict]:
     """
-    AI sütunundan sinyal ve confidence parse et
-
-    Format: "BUY (75%)" veya "SELL (60%)" veya "HOLD (50%)"
-
-    Returns:
-        {"signal": "BUY", "confidence": 75, "ai_model": "DeepSeek"} veya None
-    """
-    if not value or value.strip() == "":
-        return None
-
-    try:
-        # Match pattern: "SIGNAL (CONFIDENCE%)"
-        match = re.match(r'(BUY|SELL|HOLD)\s*\((\d+)%?\)', value.strip(), re.IGNORECASE)
-        if match:
-            signal = match.group(1).upper()
-            confidence = int(match.group(2))
-
-            return {
-                "signal": signal,
-                "confidence": confidence,
-                "ai_model": ai_name
-            }
-        else:
-            logger.warning(f"AI column parse failed for {ai_name}: '{value}'")
-            return None
-
-    except Exception as e:
-        logger.warning(f"AI parse error for {ai_name}: {e}")
-        return None
-
-
-def read_ai_signals(row: List[str], cols) -> List[Dict]:
-    """
-    Google Sheets satırından tüm AI sinyallerini oku (Robot 3 + Robot 8)
-
-    Args:
-        row: Google Sheets satırı
-        cols: Column mapping
-
-    Returns:
-        AI sinyalleri listesi
+    Supabase satırından tüm AI sinyallerini oku (Robot 3 + Robot 8)
     """
     ai_signals = []
 
-    # Robot 8: Personal AI (AG-AH)
-    if len(row) > cols.AG - 1 and row[cols.AG - 1]:
-        signal_data = parse_ai_column(row[cols.AG - 1], "Personal-AI-Gemini")
-        if signal_data:
-            if len(row) > cols.AH - 1 and row[cols.AH - 1]:
-                signal_data["reasoning"] = row[cols.AH - 1]
-            ai_signals.append(signal_data)
+    # Robot 3 AI'ları
+    if signal.get("deepseek_signal"):
+        ai_signals.append({
+            "signal": signal["deepseek_signal"],
+            "confidence": signal.get("deepseek_confidence", 50),
+            "reasoning": signal.get("deepseek_analysis", ""),
+            "ai_model": "DeepSeek-V3"
+        })
 
-    # Robot 3 AI'ları:
-    # GPT-4 (AI-AJ)
-    if len(row) > cols.AI - 1 and row[cols.AI - 1]:
-        signal_data = parse_ai_column(row[cols.AI - 1], "GPT-4o")
-        if signal_data:
-            if len(row) > cols.AJ - 1 and row[cols.AJ - 1]:
-                signal_data["reasoning"] = row[cols.AJ - 1]
-            ai_signals.append(signal_data)
+    if signal.get("claude_signal"):
+        ai_signals.append({
+            "signal": signal["claude_signal"],
+            "confidence": signal.get("claude_confidence", 50),
+            "reasoning": signal.get("claude_analysis", ""),
+            "ai_model": "Claude-Sonnet-4"
+        })
 
-    # Claude (AK-AL)
-    if len(row) > cols.AK - 1 and row[cols.AK - 1]:
-        signal_data = parse_ai_column(row[cols.AK - 1], "Claude-Sonnet-4")
-        if signal_data:
-            if len(row) > cols.AL - 1 and row[cols.AL - 1]:
-                signal_data["reasoning"] = row[cols.AL - 1]
-            ai_signals.append(signal_data)
+    if signal.get("gpt4_signal"):
+        ai_signals.append({
+            "signal": signal["gpt4_signal"],
+            "confidence": signal.get("gpt4_confidence", 50),
+            "reasoning": signal.get("gpt4_analysis", ""),
+            "ai_model": "GPT-4o"
+        })
 
-    # Gemini (AM-AN)
-    if len(row) > cols.AM - 1 and row[cols.AM - 1]:
-        signal_data = parse_ai_column(row[cols.AM - 1], "Gemini-2.0-Flash")
-        if signal_data:
-            if len(row) > cols.AN - 1 and row[cols.AN - 1]:
-                signal_data["reasoning"] = row[cols.AN - 1]
-            ai_signals.append(signal_data)
+    if signal.get("grok_signal"):
+        ai_signals.append({
+            "signal": signal["grok_signal"],
+            "confidence": signal.get("grok_confidence", 50),
+            "reasoning": signal.get("grok_analysis", ""),
+            "ai_model": "Grok-2"
+        })
 
-    # Grok (AO-AP)
-    if len(row) > cols.AO - 1 and row[cols.AO - 1]:
-        signal_data = parse_ai_column(row[cols.AO - 1], "Grok-2")
-        if signal_data:
-            if len(row) > cols.AP - 1 and row[cols.AP - 1]:
-                signal_data["reasoning"] = row[cols.AP - 1]
-            ai_signals.append(signal_data)
+    # Robot 8: Personal AI
+    if signal.get("personal_signal"):
+        ai_signals.append({
+            "signal": signal["personal_signal"],
+            "confidence": signal.get("personal_confidence", 50),
+            "reasoning": signal.get("personal_analysis", ""),
+            "ai_model": "Personal-AI-Gemini"
+        })
 
-    # DeepSeek (AQ-AR)
-    if len(row) > cols.AQ - 1 and row[cols.AQ - 1]:
-        signal_data = parse_ai_column(row[cols.AQ - 1], "DeepSeek-V3")
-        if signal_data:
-            if len(row) > cols.AR - 1 and row[cols.AR - 1]:
-                signal_data["reasoning"] = row[cols.AR - 1]
-            ai_signals.append(signal_data)
-
-    logger.info(f"  📊 {len(ai_signals)} AI sinyali okundu (Robot 3 + Robot 8)")
     return ai_signals
 
 
 def run():
     """Main execution function for Robot 7"""
     logger.info("=" * 80)
-    logger.info("🎯 ROBOT 7: AI COMMAND CENTER (META-ANALİZ) - BAŞLAT")
+    logger.info("🎯 ROBOT 7: AI COMMAND CENTER - BAŞLAT")
     logger.info("=" * 80)
 
+    processed = 0
+    error_msg = ""
+
     try:
-        # Get secrets
-        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+        # Get pending signals from Supabase (Robot 3 AND Robot 8 completed)
+        pending_signals = get_pending_for_robot(7)
 
-        # Get Google Sheets client
-        gc = get_gspread_client()
-        ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
-        cols = resolve_columns(ws)
-
-        logger.info(f"✓ Google Sheets bağlantısı kuruldu: {SHEET_TAB}")
-
-        # ROBUST APPROACH: Find ALL rows where Robot 3 AND Robot 8 are complete
-        # This is TIMING-INDEPENDENT - works even if timing is off!
-        ready_rows = get_rows_ready_for_command_center(ws, cols)
-        if not ready_rows:
-            logger.warning("⚠️ Robot 7 için hazır satır yok (Robot 3 + Robot 8 tamamlanmamış)")
-            # Still update separator row to show robot ran (with 0 processed)
-            update_separator_status(ws, cols, 7, 0)
+        if not pending_signals:
+            logger.warning("⚠️ Robot 7 için hazır sinyal yok (Robot 3 + Robot 8 tamamlanmamış)")
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 7, True, 0, "İşlenecek veri yok")
+            except:
+                pass
             return
 
         # Initialize assistant and command center
         assistant = create_assistant(BALANCED_PROFILE)
         command_center = create_command_center()
 
-        logger.info(f"\n🎯 Robot 3 ve Robot 8'den AI sinyalleri okunuyor...\n")
+        logger.info(f"🎯 {len(pending_signals)} sinyal için meta-analiz başlıyor...")
 
-        # Process each market
-        processed = 0
-
-        for market_data in ready_rows:
-            market = market_data["market"]
-            price = market_data["price"]
-            row_index = market_data["row_index"]
-            row = market_data["row_data"]
-
-            # NOTE: All prerequisite checks are done in get_rows_ready_for_command_center()
-            # No need to check Robot 1/3/8 status again here!
+        for signal in pending_signals:
+            signal_id = signal["id"]
+            market = signal["market"]
+            price = float(signal["price"]) if signal["price"] else 0
 
             logger.info(f"\n{'='*60}")
-            logger.info(f"📊 {market} @ ${price:,.2f} (Satır {row_index})")
+            logger.info(f"📊 {market} @ ${price:,.2f}")
             logger.info(f"{'='*60}")
 
-            # Step 1: Read AI signals from columns (Robot 3 + Robot 8)
-            ai_signals = read_ai_signals(row, cols)
+            # Read AI signals from Supabase
+            ai_signals = read_ai_signals_from_supabase(signal)
 
             if len(ai_signals) == 0:
-                logger.warning(f"  ⚠️ Bu piyasa için AI sinyali bulunamadı (Robot 3 ve 8 henüz çalışmamış olabilir)")
+                logger.warning(f"  ⚠️ AI sinyali bulunamadı")
                 continue
 
-            logger.info(f"\n  Okunan AI'lar:")
+            logger.info(f"  📊 {len(ai_signals)} AI sinyali okundu")
             for sig in ai_signals:
-                reasoning_preview = sig.get('reasoning', 'Yok')[:50]
-                logger.info(f"    • {sig['ai_model']}: {sig['signal']} ({sig['confidence']}%) - {reasoning_preview}...")
+                logger.info(f"    • {sig['ai_model']}: {sig['signal']} ({sig['confidence']}%)")
 
-            # Step 2: Assistant AI evaluation
-            logger.info(f"\n👤 Asistan AI değerlendirmesi...")
+            # Assistant AI evaluation
+            logger.info(f"  👤 Asistan AI değerlendirmesi...")
             assistant_rec = assistant.evaluate_signals(market, ai_signals)
-            logger.info(f"  {'✅' if assistant_rec['approved'] else '❌'} {assistant_rec['recommendation']}")
-            logger.info(f"  📝 {assistant_rec['reasoning']}")
 
-            # Step 3: Command Center meta-analysis
-            logger.info(f"\n🎯 Komuta Merkezi meta-analizi yapıyor...")
+            # Command Center meta-analysis
+            logger.info(f"  🎯 Komuta Merkezi meta-analizi...")
             final_decision = command_center.make_decision(market, price, ai_signals, assistant_rec)
-            logger.info(f"  🎯 NİHAİ KARAR: {final_decision['final_signal']} (%{final_decision['final_confidence']})")
-            logger.info(f"  📊 Consensus: %{final_decision['consensus_score']}")
-            logger.info(f"  ⚠️  Risk: {final_decision.get('risk_level', 'MEDIUM')}")
-            logger.info(f"  🎬 Aksiyon: {final_decision.get('suggested_action', 'SET ALERT')}")
-            logger.info(f"  📝 Gerekçe: {final_decision['reasoning'][:150]}...")
 
-            # Step 4: Write to Google Sheets (AS-AX columns: Robot 7 Komuta Merkezi)
-            try:
-                logger.info(f"\n💾 Komuta Merkezi kararı yazılıyor (AS-AX)...")
+            logger.info(f"  🎯 NİHAİ: {final_decision['final_signal']} ({final_decision['final_confidence']}%)")
+            logger.info(f"  ⚠️ Risk: {final_decision.get('risk_level', 'MEDIUM')}")
 
-                # AS: KM Nihai Sinyal (BUY/SELL/HOLD)
-                ws.update_cell(row_index, cols.AS, final_decision['final_signal'])
+            # Write to Supabase
+            update_data = {
+                "final_signal": final_decision["final_signal"],
+                "final_confidence": final_decision["final_confidence"],
+                "final_analysis": final_decision["reasoning"][:500],
+                "risk_level": final_decision.get("risk_level", "MEDIUM"),
+            }
 
-                # AT: KM Güven %
-                ws.update_cell(row_index, cols.AT, f"%{final_decision['final_confidence']}")
+            # Add TP/SL if available
+            if final_decision.get("tp1"):
+                update_data["tp1"] = final_decision["tp1"]
+            if final_decision.get("tp2"):
+                update_data["tp2"] = final_decision["tp2"]
+            if final_decision.get("sl"):
+                update_data["sl"] = final_decision["sl"]
 
-                # AU: KM Meta-Analiz (Detaylı açıklama)
-                ws.update_cell(row_index, cols.AU, final_decision['reasoning'][:500])  # Truncate
-
-                # AV: KM Consensus %
-                ws.update_cell(row_index, cols.AV, f"%{final_decision['consensus_score']}")
-
-                # AW: KM Risk Level (LOW/MEDIUM/HIGH)
-                ws.update_cell(row_index, cols.AW, final_decision.get('risk_level', 'MEDIUM'))
-
-                # AX: KM Önerilen Aksiyon (ENTER NOW/WAIT/AVOID/etc.)
-                ws.update_cell(row_index, cols.AX, final_decision.get('suggested_action', 'SET ALERT'))
-
-                # Update Robot 7 status (BQ sütunu)
-                ws.update_cell(row_index, cols.BQ, status_text(7, True))
-
+            success = update_robot_status(signal_id, 7, update_data)
+            if success:
                 processed += 1
-                logger.info(f"  ✅ Satır {row_index} güncellendi")
-
-                # Rate limiting
-                time.sleep(1)
-
-            except Exception as e:
-                logger.error(f"  ❌ Sheets yazma hatası: {e}")
-                continue
+                logger.info(f"  ✅ Signal {signal_id} güncellendi")
+            else:
+                logger.error(f"  ❌ Signal {signal_id} güncellenemedi")
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 7 TAMAMLANDI")
-        logger.info(f"  İşlenen piyasa: {processed}/{len(ready_rows)}")
+        logger.info(f"   📊 İşlenen: {processed}/{len(pending_signals)}")
+        logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 80)
 
-        # Update separator row status (even if 0 rows processed)
-        update_separator_status(ws, cols, 7, processed)
-
     except Exception as e:
+        error_msg = str(e)[:50]
         logger.error(f"❌ ROBOT 7 BAŞARISIZ: {e}", exc_info=True)
         raise
+
+    finally:
+        # Update monitoring dashboard
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=7,
+                success=processed > 0 or not error_msg,
+                count=processed,
+                detail=f"{processed} meta-analiz" if processed else "İşlenecek veri yok",
+                error=error_msg
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
 
 
 if __name__ == "__main__":

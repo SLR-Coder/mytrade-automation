@@ -3,6 +3,7 @@
 """
 Robot 5: Telegram Publisher
 Publishes AI trading signals to Telegram channel
+Supabase'den okur, Telegram'a gönderir
 """
 
 import os
@@ -18,12 +19,8 @@ from telegram.constants import ParseMode
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.schema import resolve_columns
-from utils.common import (
-    get_last_6_batches, status_text, parse_float, analyze_temporal_trend,
-    is_ready_for_analysis, get_rows_with_signals,  # ROBUST: Zamanlama bağımsız satır bulma
-    update_separator_status  # Separator satırına robot durumu yaz
-)  # DRY: Import from common
+from utils.supabase_client import get_signals_to_publish, update_robot_status
+from utils.monitoring import update_robot_status as update_monitoring
 from utils.telegram_formatter import get_performance_badge
 
 logging.basicConfig(level=logging.INFO)
@@ -658,91 +655,134 @@ def send_signals_individually(bot_token: str, chat_id: str, signals: List[Dict],
 
 def run():
     """Main execution function for Robot 5"""
-    logger.info("=" * 60)
-    logger.info("ROBOT 5: TELEGRAM PUBLISHER - STARTING")
-    logger.info("=" * 60)
+    logger.info("=" * 80)
+    logger.info("📢 ROBOT 5: TELEGRAM PUBLISHER - BAŞLAT")
+    logger.info("=" * 80)
+
+    processed = 0
+    error_msg = ""
 
     try:
-        sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
         bot_token = get_secret("TELEGRAM_BOT_TOKEN")
         chat_id = get_secret("TELEGRAM_CHAT_ID")
 
-        gc = get_gspread_client()
-        ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
-        cols = resolve_columns(ws)
+        # Get signals ready to publish from Supabase
+        pending_signals = get_signals_to_publish()
 
-        logger.info(f"Connected to Google Sheet: {SHEET_TAB}")
-
-        signals = read_latest_signals(ws, cols)
-
-        if not signals:
-            logger.warning("⚠ No AI signals found in sheet")
-            # Still update separator row to show robot ran (with 0 published)
-            update_separator_status(ws, cols, 5, 0)
+        if not pending_signals:
+            logger.warning("⚠️ Yayınlanacak sinyal yok (Robot 5 için)")
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 5, True, 0, "İşlenecek veri yok")
+            except:
+                pass
             return
 
-        # Read temporal data (last 6 batches for 30-minute trend analysis)
-        logger.info("Reading temporal trend data (last 30 minutes)...")
-        temporal_data = get_last_6_batches(ws, cols)
-        logger.info(f"✓ Temporal data loaded for {len(temporal_data)} markets")
+        logger.info(f"🎯 {len(pending_signals)} sinyal Telegram'a gönderilecek...")
 
-        # Calculate recent performance (last 30 days) for transparency badge
-        logger.info("Calculating recent performance metrics...")
-        performance_data = calculate_recent_performance(ws, cols, days=30)
+        # Convert Supabase rows to signal format for Telegram
+        signals = []
+        for signal_data in pending_signals:
+            signal = {
+                "id": signal_data["id"],
+                "market": signal_data["market"],
+                "price": float(signal_data["price"]) if signal_data.get("price") else 0,
+                "change_pct": float(signal_data.get("change_24h", 0) or 0),
+                "ensemble_signal": signal_data.get("final_signal", "HOLD"),
+                "ensemble_confidence": int(signal_data.get("final_confidence", 0) or 0),
+                "ensemble_reasoning": signal_data.get("final_analysis", ""),
+                "risk_level": signal_data.get("risk_level", "MEDIUM"),
+                "suggested_action": "SET ALERT",
+                "rsi": signal_data.get("rsi"),
+                "trend": signal_data.get("trend"),
+                "entry_price": float(signal_data["price"]) if signal_data.get("price") else None,
+                "stop_loss": float(signal_data.get("sl")) if signal_data.get("sl") else None,
+                "take_profit_1": float(signal_data.get("tp1")) if signal_data.get("tp1") else None,
+                "take_profit_2": float(signal_data.get("tp2")) if signal_data.get("tp2") else None,
+                "risk_reward": None,
+                "chart_url": signal_data.get("chart_url", ""),
+                # AI signals for display
+                "personal_signal": signal_data.get("personal_signal", ""),
+                "gpt4_signal": signal_data.get("gpt4_signal", ""),
+                "claude_signal": signal_data.get("claude_signal", ""),
+                "gemini_signal": "",
+                "grok_signal": signal_data.get("grok_signal", ""),
+                "deepseek_signal": signal_data.get("deepseek_signal", ""),
+            }
+            signals.append(signal)
 
+        # Filter by confidence
         filtered_signals = filter_signals(signals, MIN_CONFIDENCE)
 
-        # If SEND_CHARTS is enabled, filter to only signals with available charts
+        # Filter to signals with charts if SEND_CHARTS is enabled
         if SEND_CHARTS and filtered_signals:
             signals_with_charts = []
             for signal in filtered_signals:
-                # Check for GCS URL first (BT column), then local file
                 chart_url = signal.get('chart_url', '')
                 chart_path = find_chart_for_market(signal['market']) if not chart_url else None
                 if chart_url or chart_path:
                     signals_with_charts.append(signal)
 
             if signals_with_charts:
-                logger.info(f"Found {len(signals_with_charts)}/{len(filtered_signals)} signals with charts (GCS or local)")
+                logger.info(f"✅ {len(signals_with_charts)}/{len(filtered_signals)} sinyal grafik ile")
                 filtered_signals = signals_with_charts
             else:
-                logger.warning("No signals have charts available, sending all filtered signals")
+                logger.warning("⚠️ Grafikli sinyal yok, tümü gönderilecek")
 
         if not filtered_signals:
-            logger.warning(f"⚠ No signals above {MIN_CONFIDENCE}% confidence")
-            # Still update separator row to show robot ran (with 0 published)
-            update_separator_status(ws, cols, 5, 0)
+            logger.warning(f"⚠️ {MIN_CONFIDENCE}% üzeri güven yok")
+            try:
+                gc = get_gspread_client()
+                sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+                update_monitoring(gc, sheet_id, 5, True, 0, f"Güven < {MIN_CONFIDENCE}%")
+            except:
+                pass
             return
 
-        logger.info(f"Sending signals to Telegram individually ({len(filtered_signals)} signals)...")
-        success = send_signals_individually(bot_token, chat_id, filtered_signals, temporal_data, performance_data)
+        logger.info(f"📤 {len(filtered_signals)} sinyal Telegram'a gönderiliyor...")
+
+        # Send to Telegram
+        success = send_signals_individually(bot_token, chat_id, filtered_signals, None, None)
 
         if success:
-            # Update Robot 5 status in Google Sheets (BO column)
-            logger.info("Updating Robot 5 status in Google Sheets...")
-            updated = 0
-            for signal in signals:
-                try:
-                    row_idx = signal['row_index']
-                    ws.update_cell(row_idx, cols.BO, status_text(5, True))
-                    updated += 1
-                except Exception as e:
-                    logger.warning(f"Failed to update status for {signal['market']}: {e}")
-                    continue
+            # Update Supabase status for published signals
+            for signal in filtered_signals:
+                signal_id = signal["id"]
+                update_data = {"telegram_message_id": f"sent_{int(time.time())}"}
+                if update_robot_status(signal_id, 5, update_data):
+                    processed += 1
+                    logger.info(f"  ✅ {signal['market']} yayınlandı")
+                else:
+                    logger.error(f"  ❌ {signal['market']} güncellenemedi")
 
-            logger.info(f"✓ Updated {updated}/{len(signals)} rows with Robot 5 ✅")
-            logger.info("✓ ROBOT 5 COMPLETED SUCCESSFULLY")
-
-            # Update separator row status (with published count)
-            update_separator_status(ws, cols, 5, updated)
-        else:
-            logger.error("❌ Failed to send Telegram message")
-            # Still update separator row to show robot ran (with 0 published)
-            update_separator_status(ws, cols, 5, 0)
+        logger.info("\n" + "=" * 80)
+        logger.info(f"✅ ROBOT 5 TAMAMLANDI")
+        logger.info(f"   📤 Yayınlanan: {processed}/{len(filtered_signals)}")
+        logger.info(f"   💾 Supabase: ✅")
+        logger.info("=" * 80)
 
     except Exception as e:
-        logger.error(f"❌ ROBOT 5 FAILED: {e}", exc_info=True)
+        error_msg = str(e)[:50]
+        logger.error(f"❌ ROBOT 5 BAŞARISIZ: {e}", exc_info=True)
         raise
+
+    finally:
+        # Update monitoring dashboard
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=5,
+                success=processed > 0 or not error_msg,
+                count=processed,
+                detail=f"{processed} Telegram" if processed else "İşlenecek veri yok",
+                error=error_msg
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
 
 
 if __name__ == "__main__":
