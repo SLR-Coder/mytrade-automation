@@ -27,7 +27,10 @@ from utils.smc_indicators import (
     detect_structure_break, calculate_swing_points, calculate_adr,
     detect_htf_trend, detect_session, calculate_all_smc_indicators
 )
-from utils.supabase_client import insert_signals_batch, generate_batch_id as supabase_batch_id
+from utils.supabase_client import (
+    insert_signals_batch, generate_batch_id as supabase_batch_id,
+    get_batch_sequence, get_processing_status
+)
 from utils.monitoring import update_robot_status, log_robot_start
 
 logging.basicConfig(level=logging.INFO)
@@ -368,6 +371,12 @@ def prepare_supabase_data(data_list: List[Dict]) -> List[Dict]:
     """
     supabase_rows = []
 
+    # Get current batch sequence (1-6) and processing status
+    batch_sequence = get_batch_sequence()
+    processing_status = get_processing_status(batch_sequence)
+
+    logger.info(f"📊 Batch sequence: {batch_sequence}/6 - Status: {processing_status}")
+
     for data in data_list:
         if not data:
             continue
@@ -379,6 +388,7 @@ def prepare_supabase_data(data_list: List[Dict]) -> List[Dict]:
             "market": data["market"],
             "price": data.get("price"),
             "volume": data.get("volume", 0),
+            "change_24h": data.get("change_percent", 0),
             "rsi": indicators.get("rsi"),
             "macd": indicators.get("macd"),
             "macd_signal": indicators.get("macd_signal"),
@@ -390,6 +400,8 @@ def prepare_supabase_data(data_list: List[Dict]) -> List[Dict]:
             "support_1": indicators.get("support_levels", [None])[0] if indicators.get("support_levels") else None,
             "resistance_1": indicators.get("resistance_levels", [None])[0] if indicators.get("resistance_levels") else None,
             "atr": indicators.get("atr"),
+            "batch_sequence": batch_sequence,
+            "processing_status": processing_status,
             "robot1_status": "completed",
         }
 

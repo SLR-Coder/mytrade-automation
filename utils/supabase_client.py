@@ -44,6 +44,32 @@ def generate_batch_id() -> str:
     return now.strftime(f"%Y-%m-%d_%H:{minute:02d}")
 
 
+def get_batch_sequence() -> int:
+    """Get current batch sequence (1-6) within 30-minute window
+
+    :00-:04 → 1
+    :05-:09 → 2
+    :10-:14 → 3
+    :15-:19 → 4
+    :20-:24 → 5
+    :25-:29 → 6
+    :30-:34 → 1
+    ...
+    """
+    now = datetime.now()
+    minute_in_window = now.minute % 30
+    return (minute_in_window // 5) + 1
+
+
+def get_processing_status(batch_sequence: int) -> str:
+    """Get processing status based on batch sequence
+
+    Sequence 1-5: pending (waiting for more data)
+    Sequence 6: ready_for_analysis (30 min data complete)
+    """
+    return "ready_for_analysis" if batch_sequence == 6 else "pending"
+
+
 # ============================================
 # ROBOT 1: Market Harvester
 # ============================================
@@ -101,24 +127,27 @@ def insert_signals_batch(signals: List[Dict[str, Any]]) -> int:
     try:
         supabase = get_supabase()
         batch_id = generate_batch_id()
+        batch_sequence = get_batch_sequence()
 
         # Prepare all signals
         for signal in signals:
             if "batch_id" not in signal:
                 signal["batch_id"] = batch_id
+            if "batch_sequence" not in signal:
+                signal["batch_sequence"] = batch_sequence
             # Convert Decimal to float
             for key, value in signal.items():
                 if isinstance(value, Decimal):
                     signal[key] = float(value)
 
-        # Use upsert to handle duplicates
+        # Use upsert to handle duplicates (batch_id + batch_sequence + market)
         result = supabase.table("signals").upsert(
             signals,
-            on_conflict="batch_id,market"
+            on_conflict="batch_id,batch_sequence,market"
         ).execute()
 
         count = len(result.data) if result.data else 0
-        logger.info(f"Inserted/updated {count} signals for batch {batch_id}")
+        logger.info(f"Inserted/updated {count} signals for batch {batch_id} seq {batch_sequence}")
         return count
 
     except Exception as e:
@@ -179,8 +208,159 @@ def mark_news_sent(news_id: int, message_id: str) -> bool:
 
 
 # ============================================
-# ROBOT 3, 8: AI Analysis
+# ROBOT 3, 8: AI Analysis (Polling Mode)
 # ============================================
+
+def get_batches_ready_for_analysis() -> List[str]:
+    """Get batch_ids that are ready for analysis (have sequence 6)
+
+    Returns:
+        List of batch_ids ready for Robot 3/8
+    """
+    try:
+        supabase = get_supabase()
+
+        # Find batches with sequence 6 (complete 30-min data)
+        result = supabase.table("signals").select("batch_id").eq(
+            "batch_sequence", 6
+        ).eq(
+            "processing_status", "ready_for_analysis"
+        ).execute()
+
+        if not result.data:
+            return []
+
+        # Get unique batch_ids
+        batch_ids = list(set(row["batch_id"] for row in result.data))
+        logger.info(f"Found {len(batch_ids)} batches ready for analysis")
+        return batch_ids
+
+    except Exception as e:
+        logger.error(f"Error getting ready batches: {e}")
+        return []
+
+
+def get_market_history(batch_id: str, market: str) -> List[Dict]:
+    """Get all 6 sequences for a market within a batch (30-min trend data)
+
+    Args:
+        batch_id: Batch ID (e.g., "2025-12-06_14:00")
+        market: Market symbol (e.g., "BTC/USDT")
+
+    Returns:
+        List of 6 signal rows ordered by sequence
+    """
+    try:
+        supabase = get_supabase()
+
+        result = supabase.table("signals").select("*").eq(
+            "batch_id", batch_id
+        ).eq(
+            "market", market
+        ).order("batch_sequence").execute()
+
+        return result.data if result.data else []
+
+    except Exception as e:
+        logger.error(f"Error getting market history: {e}")
+        return []
+
+
+def get_markets_in_batch(batch_id: str) -> List[str]:
+    """Get all unique markets in a batch
+
+    Args:
+        batch_id: Batch ID
+
+    Returns:
+        List of market symbols
+    """
+    try:
+        supabase = get_supabase()
+
+        result = supabase.table("signals").select("market").eq(
+            "batch_id", batch_id
+        ).eq("batch_sequence", 6).execute()
+
+        if not result.data:
+            return []
+
+        return list(set(row["market"] for row in result.data))
+
+    except Exception as e:
+        logger.error(f"Error getting markets in batch: {e}")
+        return []
+
+
+def get_unanalyzed_batches(robot_number: int) -> List[Dict]:
+    """Get batches ready for analysis but not yet processed by this robot
+
+    Args:
+        robot_number: Robot number (3 or 8)
+
+    Returns:
+        List of {batch_id, markets} dicts
+    """
+    try:
+        supabase = get_supabase()
+        status_column = f"robot{robot_number}_status"
+
+        # Find sequence 6 rows that are ready but not analyzed
+        result = supabase.table("signals").select("batch_id, market").eq(
+            "batch_sequence", 6
+        ).eq(
+            "processing_status", "ready_for_analysis"
+        ).is_(status_column, "null").execute()
+
+        if not result.data:
+            return []
+
+        # Group by batch_id
+        batches = {}
+        for row in result.data:
+            bid = row["batch_id"]
+            if bid not in batches:
+                batches[bid] = []
+            batches[bid].append(row["market"])
+
+        return [{"batch_id": bid, "markets": markets} for bid, markets in batches.items()]
+
+    except Exception as e:
+        logger.error(f"Error getting unanalyzed batches: {e}")
+        return []
+
+
+def update_batch_analysis(batch_id: str, market: str, robot_number: int, data: Dict) -> bool:
+    """Update all 6 sequences for a market with analysis results
+
+    Args:
+        batch_id: Batch ID
+        market: Market symbol
+        robot_number: Robot number (3 or 8)
+        data: Analysis results
+
+    Returns:
+        Success boolean
+    """
+    try:
+        supabase = get_supabase()
+
+        # Add status
+        data[f"robot{robot_number}_status"] = "completed"
+        data[f"robot{robot_number}_completed_at"] = datetime.now().isoformat()
+
+        # Update all sequences for this market in this batch
+        supabase.table("signals").update(data).eq(
+            "batch_id", batch_id
+        ).eq("market", market).execute()
+
+        logger.info(f"Robot {robot_number} updated {market} in batch {batch_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error updating batch analysis: {e}")
+        return False
+
 
 def get_pending_for_robot(robot_number: int, limit: int = 50) -> List[Dict]:
     """Get signals pending for a specific robot

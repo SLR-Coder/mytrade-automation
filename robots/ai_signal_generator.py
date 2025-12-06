@@ -31,7 +31,9 @@ from utils.claude_wrapper import get_claude_signal
 from utils.openai_wrapper import get_openai_signal
 from utils.grok_wrapper import get_grok_signal
 from utils.gemini_wrapper import get_gemini_signal
-from utils.supabase_client import get_pending_for_robot, update_robot_status
+from utils.supabase_client import (
+    get_unanalyzed_batches, get_market_history, update_batch_analysis
+)
 from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
@@ -122,105 +124,169 @@ def calculate_risk_reward(price: float, signal: str, indicators: Dict):
     return entry, sl, tp1, tp2, risk_reward
 
 
-# analyze_temporal_trend removed - now imported from utils.common
+def format_trend_data(history: list) -> Dict:
+    """Format 6-sequence trend data for AI analysis
+
+    Args:
+        history: List of 6 signal rows (sequences 1-6)
+
+    Returns:
+        Dict with trend summary and latest indicators
+    """
+    if not history:
+        return {}
+
+    # Get price trend
+    prices = [float(h["price"]) for h in history if h.get("price")]
+    if len(prices) >= 2:
+        price_change = ((prices[-1] - prices[0]) / prices[0]) * 100
+        trend_direction = "UP" if price_change > 0.5 else "DOWN" if price_change < -0.5 else "SIDEWAYS"
+    else:
+        price_change = 0
+        trend_direction = "UNKNOWN"
+
+    # Get RSI trend
+    rsis = [float(h["rsi"]) for h in history if h.get("rsi")]
+    rsi_trend = "INCREASING" if len(rsis) >= 2 and rsis[-1] > rsis[0] else "DECREASING" if len(rsis) >= 2 and rsis[-1] < rsis[0] else "STABLE"
+
+    # Latest data (sequence 6)
+    latest = history[-1] if history else {}
+
+    return {
+        "price_history": prices,
+        "price_change_30min": price_change,
+        "trend_direction": trend_direction,
+        "rsi_trend": rsi_trend,
+        "latest_price": latest.get("price"),
+        "latest_rsi": latest.get("rsi"),
+        "latest_macd": latest.get("macd"),
+        "latest_bb_upper": latest.get("bb_upper"),
+        "latest_bb_middle": latest.get("bb_middle"),
+        "latest_bb_lower": latest.get("bb_lower"),
+        "support": latest.get("support_1"),
+        "resistance": latest.get("resistance_1"),
+        "atr": latest.get("atr"),
+        "sequence_count": len(history),
+    }
 
 
 async def run():
-    """Main execution function for Robot 3"""
+    """Main execution function for Robot 3 - POLLING MODE"""
     logger.info("=" * 80)
-    logger.info("🤖 ROBOT 3: AI SIGNAL GENERATOR - BAŞLAT")
+    logger.info("🤖 ROBOT 3: AI SIGNAL GENERATOR - POLLING MODE")
     logger.info("=" * 80)
 
     processed = 0
     error_msg = ""
 
     try:
-        # Get pending signals from Supabase
-        pending_signals = get_pending_for_robot(3)
+        # Check for unanalyzed batches
+        unanalyzed = get_unanalyzed_batches(3)
 
-        if not pending_signals:
-            logger.warning("⚠️ İşlenecek sinyal yok (Robot 3 için)")
-            # Update monitoring
+        if not unanalyzed:
+            logger.info("⏳ Analiz bekleyen batch yok (Robot 3)")
             try:
                 gc = get_gspread_client()
                 sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
-                update_monitoring(gc, sheet_id, 3, True, 0, "İşlenecek veri yok")
+                update_monitoring(gc, sheet_id, 3, True, 0, "Bekleyen batch yok")
             except:
                 pass
             return
 
-        logger.info(f"🎯 {len(pending_signals)} sinyal için AI analizi başlıyor...")
+        logger.info(f"🎯 {len(unanalyzed)} batch analiz edilecek")
 
-        for signal in pending_signals:
-            signal_id = signal["id"]
-            market = signal["market"]
-            price = float(signal["price"]) if signal["price"] else 0
-
-            # Build indicators dict from signal data
-            indicators = {
-                "rsi": signal.get("rsi"),
-                "macd": signal.get("macd"),
-                "macd_signal": signal.get("macd_signal"),
-                "bb_upper": signal.get("bb_upper"),
-                "bb_middle": signal.get("bb_middle"),
-                "bb_lower": signal.get("bb_lower"),
-                "ema_9": signal.get("ema_9"),
-                "ema_21": signal.get("ema_21"),
-                "support_1": signal.get("support_1"),
-                "resistance_1": signal.get("resistance_1"),
-                "atr": signal.get("atr"),
-            }
+        for batch_info in unanalyzed:
+            batch_id = batch_info["batch_id"]
+            markets = batch_info["markets"]
 
             logger.info(f"\n{'='*60}")
-            logger.info(f"📊 {market} @ ${price:,.2f}")
+            logger.info(f"📦 Batch: {batch_id} - {len(markets)} market")
             logger.info(f"{'='*60}")
 
-            # Collect AI signals (parallel)
-            ai_signals = await collect_ai_signals(market, price, indicators)
+            for market in markets:
+                # Get 6-sequence trend data for this market
+                history = get_market_history(batch_id, market)
 
-            # Prepare data for Supabase update
-            update_data = {}
+                if len(history) < 3:
+                    logger.warning(f"  ⚠️ {market}: Yetersiz veri ({len(history)} sequence)")
+                    continue
 
-            # DeepSeek
-            if ai_signals.get("deepseek"):
-                ds = ai_signals["deepseek"]
-                update_data["deepseek_signal"] = ds["signal"]
-                update_data["deepseek_confidence"] = ds["confidence"]
-                update_data["deepseek_analysis"] = ds["reasoning"][:500]
+                # Format trend data
+                trend_data = format_trend_data(history)
+                price = float(trend_data.get("latest_price", 0) or 0)
 
-            # Claude
-            if ai_signals.get("claude"):
-                cl = ai_signals["claude"]
-                update_data["claude_signal"] = cl["signal"]
-                update_data["claude_confidence"] = cl["confidence"]
-                update_data["claude_analysis"] = cl["reasoning"][:500]
+                logger.info(f"\n📊 {market} @ ${price:,.2f}")
+                logger.info(f"   30dk Trend: {trend_data['trend_direction']} ({trend_data['price_change_30min']:+.2f}%)")
 
-            # GPT-4
-            if ai_signals.get("gpt4"):
-                gpt = ai_signals["gpt4"]
-                update_data["gpt4_signal"] = gpt["signal"]
-                update_data["gpt4_confidence"] = gpt["confidence"]
-                update_data["gpt4_analysis"] = gpt["reasoning"][:500]
+                # Build indicators with trend context
+                indicators = {
+                    "rsi": trend_data.get("latest_rsi"),
+                    "macd": trend_data.get("latest_macd"),
+                    "bb_upper": trend_data.get("latest_bb_upper"),
+                    "bb_middle": trend_data.get("latest_bb_middle"),
+                    "bb_lower": trend_data.get("latest_bb_lower"),
+                    "support_1": trend_data.get("support"),
+                    "resistance_1": trend_data.get("resistance"),
+                    "atr": trend_data.get("atr"),
+                    # Trend context for AI
+                    "trend_30min": trend_data["trend_direction"],
+                    "price_change_30min": trend_data["price_change_30min"],
+                    "rsi_trend": trend_data["rsi_trend"],
+                    "price_history": trend_data["price_history"],
+                }
 
-            # Grok
-            if ai_signals.get("grok"):
-                grk = ai_signals["grok"]
-                update_data["grok_signal"] = grk["signal"]
-                update_data["grok_confidence"] = grk["confidence"]
-                update_data["grok_analysis"] = grk["reasoning"][:500]
+                # Collect AI signals (parallel - 5 AIs)
+                ai_signals = await collect_ai_signals(market, price, indicators)
 
-            # Write to Supabase
-            if update_data:
-                success = update_robot_status(signal_id, 3, update_data)
-                if success:
-                    processed += 1
-                    logger.info(f"  ✅ Signal {signal_id} güncellendi")
-                else:
-                    logger.error(f"  ❌ Signal {signal_id} güncellenemedi")
+                # Prepare update data
+                update_data = {}
+
+                if ai_signals.get("deepseek"):
+                    ds = ai_signals["deepseek"]
+                    update_data["deepseek_signal"] = ds["signal"]
+                    update_data["deepseek_confidence"] = ds["confidence"]
+                    update_data["deepseek_analysis"] = ds["reasoning"][:500]
+
+                if ai_signals.get("claude"):
+                    cl = ai_signals["claude"]
+                    update_data["claude_signal"] = cl["signal"]
+                    update_data["claude_confidence"] = cl["confidence"]
+                    update_data["claude_analysis"] = cl["reasoning"][:500]
+
+                if ai_signals.get("gpt4"):
+                    gpt = ai_signals["gpt4"]
+                    update_data["gpt4_signal"] = gpt["signal"]
+                    update_data["gpt4_confidence"] = gpt["confidence"]
+                    update_data["gpt4_analysis"] = gpt["reasoning"][:500]
+
+                if ai_signals.get("gemini"):
+                    gem = ai_signals["gemini"]
+                    update_data["gemini_signal"] = gem["signal"]
+                    update_data["gemini_confidence"] = gem["confidence"]
+                    update_data["gemini_analysis"] = gem["reasoning"][:500]
+
+                if ai_signals.get("grok"):
+                    grk = ai_signals["grok"]
+                    update_data["grok_signal"] = grk["signal"]
+                    update_data["grok_confidence"] = grk["confidence"]
+                    update_data["grok_analysis"] = grk["reasoning"][:500]
+
+                # Update all 6 sequences for this market
+                if update_data:
+                    success = update_batch_analysis(batch_id, market, 3, update_data)
+                    if success:
+                        processed += 1
+                        logger.info(f"  ✅ {market} analiz tamamlandı")
+                    else:
+                        logger.error(f"  ❌ {market} güncellenemedi")
+
+        # Calculate total markets processed
+        total_markets = sum(len(b["markets"]) for b in unanalyzed)
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 3 TAMAMLANDI")
-        logger.info(f"   📊 İşlenen: {processed}/{len(pending_signals)}")
+        logger.info(f"   📊 İşlenen: {processed}/{total_markets} market")
+        logger.info(f"   📦 Batch: {len(unanalyzed)}")
         logger.info(f"   💾 Supabase: ✅")
         logger.info("=" * 80)
 
@@ -240,7 +306,7 @@ async def run():
                 robot_number=3,
                 success=processed > 0 or not error_msg,
                 count=processed,
-                detail=f"{processed} AI analizi" if processed else "İşlenecek veri yok",
+                detail=f"{processed} market analizi" if processed else "Bekleyen batch yok",
                 error=error_msg
             )
         except Exception as e:
