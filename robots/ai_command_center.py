@@ -3,13 +3,14 @@
 """
 Robot 7: AI Command Center
 Robot 3 ve Robot 8'den gelen tüm AI analizlerini okur, meta-analiz yapar ve nihai kararı verir
+TP/SL hesaplama ve risk yönetimi dahil
 """
 
 import os
 import time
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
@@ -20,6 +21,121 @@ from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-7-AICommandCenter")
+
+# TP/SL Multipliers based on risk level
+RISK_MULTIPLIERS = {
+    "LOW": {"tp1": 1.5, "tp2": 2.5, "sl": 0.8},      # Daha agresif TP, dar SL
+    "MEDIUM": {"tp1": 1.2, "tp2": 2.0, "sl": 1.0},   # Dengeli
+    "HIGH": {"tp1": 1.0, "tp2": 1.5, "sl": 1.2},     # Muhafazakar TP, geniş SL
+}
+
+# Default volatility if ATR/BB not available (percentage)
+DEFAULT_VOLATILITY_PCT = 0.02  # 2%
+
+
+def calculate_volatility(signal: Dict) -> float:
+    """
+    Calculate volatility from indicators (ATR or Bollinger Bands)
+
+    Priority: ATR > BB width > Default
+
+    Returns:
+        Volatility as a ratio (e.g., 0.02 = 2%)
+    """
+    price = float(signal.get("price", 0) or 0)
+    if price <= 0:
+        return DEFAULT_VOLATILITY_PCT
+
+    # Try ATR first (best volatility measure)
+    atr = signal.get("atr")
+    if atr:
+        try:
+            atr_val = float(atr)
+            if atr_val > 0:
+                volatility = atr_val / price
+                logger.debug(f"Using ATR volatility: {volatility:.4f}")
+                return volatility
+        except (ValueError, TypeError):
+            pass
+
+    # Try Bollinger Bands width
+    bb_upper = signal.get("bb_upper")
+    bb_lower = signal.get("bb_lower")
+    if bb_upper and bb_lower:
+        try:
+            upper = float(bb_upper)
+            lower = float(bb_lower)
+            if upper > lower > 0:
+                bb_width = (upper - lower) / price
+                volatility = bb_width / 2  # Half of BB width
+                logger.debug(f"Using BB volatility: {volatility:.4f}")
+                return volatility
+        except (ValueError, TypeError):
+            pass
+
+    # Default volatility
+    logger.debug(f"Using default volatility: {DEFAULT_VOLATILITY_PCT}")
+    return DEFAULT_VOLATILITY_PCT
+
+
+def calculate_tp_sl(
+    price: float,
+    signal_direction: str,
+    volatility: float,
+    risk_level: str = "MEDIUM"
+) -> Dict[str, float]:
+    """
+    Calculate Take Profit and Stop Loss levels
+
+    Args:
+        price: Current market price
+        signal_direction: "BUY", "SELL", or "HOLD"
+        volatility: Volatility ratio (e.g., 0.02 = 2%)
+        risk_level: "LOW", "MEDIUM", or "HIGH"
+
+    Returns:
+        Dict with entry_price, tp1, tp2, sl, risk_reward
+    """
+    if signal_direction == "HOLD" or price <= 0:
+        return {
+            "entry_price": price,
+            "tp1": None,
+            "tp2": None,
+            "sl": None,
+            "risk_reward": None
+        }
+
+    # Get multipliers based on risk level
+    multipliers = RISK_MULTIPLIERS.get(risk_level, RISK_MULTIPLIERS["MEDIUM"])
+
+    # Calculate distances
+    tp1_distance = price * volatility * multipliers["tp1"]
+    tp2_distance = price * volatility * multipliers["tp2"]
+    sl_distance = price * volatility * multipliers["sl"]
+
+    if signal_direction == "BUY":
+        tp1 = price + tp1_distance
+        tp2 = price + tp2_distance
+        sl = price - sl_distance
+    else:  # SELL
+        tp1 = price - tp1_distance
+        tp2 = price - tp2_distance
+        sl = price + sl_distance
+
+    # Calculate Risk/Reward ratio (based on TP1)
+    risk = abs(price - sl)
+    reward = abs(tp1 - price)
+    risk_reward = reward / risk if risk > 0 else 0
+
+    logger.info(f"  📐 TP/SL hesaplandı: Entry=${price:,.2f}, TP1=${tp1:,.2f}, TP2=${tp2:,.2f}, SL=${sl:,.2f}, R:R={risk_reward:.2f}")
+
+    return {
+        "entry_price": round(price, 8),
+        "tp1": round(tp1, 8),
+        "tp2": round(tp2, 8),
+        "sl": round(sl, 8),
+        "risk_reward": round(risk_reward, 2)
+    }
 
 def read_ai_signals_from_supabase(signal: Dict) -> List[Dict]:
     """
@@ -50,6 +166,14 @@ def read_ai_signals_from_supabase(signal: Dict) -> List[Dict]:
             "confidence": signal.get("gpt4_confidence", 50),
             "reasoning": signal.get("gpt4_analysis", ""),
             "ai_model": "GPT-4o"
+        })
+
+    if signal.get("gemini_signal"):
+        ai_signals.append({
+            "signal": signal["gemini_signal"],
+            "confidence": signal.get("gemini_confidence", 50),
+            "reasoning": signal.get("gemini_analysis", ""),
+            "ai_model": "Gemini-2.5-Pro"
         })
 
     if signal.get("grok_signal"):
@@ -129,24 +253,33 @@ def run():
             logger.info(f"  🎯 Komuta Merkezi meta-analizi...")
             final_decision = command_center.make_decision(market, price, ai_signals, assistant_rec)
 
-            logger.info(f"  🎯 NİHAİ: {final_decision['final_signal']} ({final_decision['final_confidence']}%)")
-            logger.info(f"  ⚠️ Risk: {final_decision.get('risk_level', 'MEDIUM')}")
+            final_signal = final_decision["final_signal"]
+            risk_level = final_decision.get("risk_level", "MEDIUM")
+
+            logger.info(f"  🎯 NİHAİ: {final_signal} ({final_decision['final_confidence']}%)")
+            logger.info(f"  ⚠️ Risk: {risk_level}")
+
+            # Calculate TP/SL based on volatility and risk level
+            volatility = calculate_volatility(signal)
+            tp_sl = calculate_tp_sl(price, final_signal, volatility, risk_level)
 
             # Write to Supabase
             update_data = {
-                "final_signal": final_decision["final_signal"],
+                "final_signal": final_signal,
                 "final_confidence": final_decision["final_confidence"],
                 "final_analysis": final_decision["reasoning"][:500],
-                "risk_level": final_decision.get("risk_level", "MEDIUM"),
+                "risk_level": risk_level,
             }
 
-            # Add TP/SL if available
-            if final_decision.get("tp1"):
-                update_data["tp1"] = final_decision["tp1"]
-            if final_decision.get("tp2"):
-                update_data["tp2"] = final_decision["tp2"]
-            if final_decision.get("sl"):
-                update_data["sl"] = final_decision["sl"]
+            # Add TP/SL values (calculated locally)
+            if tp_sl.get("entry_price"):
+                update_data["entry_price"] = tp_sl["entry_price"]
+            if tp_sl.get("tp1"):
+                update_data["tp1"] = tp_sl["tp1"]
+            if tp_sl.get("tp2"):
+                update_data["tp2"] = tp_sl["tp2"]
+            if tp_sl.get("sl"):
+                update_data["sl"] = tp_sl["sl"]
 
             success = update_robot_status(signal_id, 7, update_data)
             if success:
