@@ -650,7 +650,28 @@ def send_signals_individually(bot_token: str, chat_id: str, signals: List[Dict],
     Returns:
         Success boolean
     """
-    return asyncio.run(send_signals_individually_async(bot_token, chat_id, signals, temporal_data, performance_data))
+    try:
+        # Check if there's already a running event loop
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Create a new loop in a separate thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    send_signals_individually_async(bot_token, chat_id, signals, temporal_data, performance_data)
+                )
+                return future.result()
+        else:
+            return asyncio.run(send_signals_individually_async(bot_token, chat_id, signals, temporal_data, performance_data))
+    except RuntimeError:
+        # Fallback: create new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(send_signals_individually_async(bot_token, chat_id, signals, temporal_data, performance_data))
+        finally:
+            loop.close()
 
 
 def run():
