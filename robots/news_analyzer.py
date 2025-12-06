@@ -395,15 +395,17 @@ def run():
                 "Duyarlılık", "Etki", "İlgili Piyasalar", "Türkçe Özet", "URL"
             ])
 
-        # Get existing news titles to avoid duplicates
+        # Get existing news titles to avoid duplicates (only last 100 rows to avoid over-filtering)
         existing_titles = set()
         try:
             all_rows = news_ws.get_all_values()
             if len(all_rows) > 1:  # Skip header
-                for row in all_rows[1:]:
+                # Only check last 100 rows (about 4 days of news at 25/day)
+                recent_rows = all_rows[-100:] if len(all_rows) > 100 else all_rows[1:]
+                for row in recent_rows:
                     if len(row) > 1 and row[1]:  # Column B = Başlık
                         existing_titles.add(row[1][:100])  # First 100 chars for matching
-            logger.info(f"📋 Sheet'te {len(existing_titles)} mevcut haber var (duplikasyon kontrolü)")
+            logger.info(f"📋 Son 100 satırda {len(existing_titles)} mevcut haber var (duplikasyon kontrolü)")
         except Exception as e:
             logger.warning(f"Could not read existing news: {e}")
 
@@ -418,11 +420,18 @@ def run():
 
         all_news: List[NewsItem] = []
 
+        # Counters for debugging
+        total_fetched = 0
+        skipped_duplicate_session = 0
+        skipped_duplicate_sheet = 0
+        skipped_low_impact = 0
+
         # Fetch and analyze news (sentiment only - no Turkish translation yet)
         for category, query in queries.items():
             logger.info(f"\n📰 Fetching {category} news...")
 
             articles = analyzer.fetch_news(query, lookback_hours=NEWS_LOOKBACK_HOURS)
+            total_fetched += len(articles)
 
             for article in articles[:MAX_NEWS_PER_CATEGORY]:
                 try:
@@ -438,12 +447,14 @@ def run():
                     except:
                         published_at = datetime.now(timezone.utc)
 
-                    # Skip duplicate news (already in Sheet or already processed)
+                    # Skip duplicate news (already processed in this session)
                     if any(n.title == title for n in all_news):
+                        skipped_duplicate_session += 1
                         continue
 
                     # Skip news already in Sheet (from previous runs)
                     if title[:100] in existing_titles:
+                        skipped_duplicate_sheet += 1
                         continue
 
                     # Analyze sentiment ONLY (save AI calls - no Turkish translation yet)
@@ -451,6 +462,7 @@ def run():
 
                     # Skip DÜŞÜK impact news - only keep YÜKSEK and ORTA
                     if sentiment["impact"] == "DÜŞÜK":
+                        skipped_low_impact += 1
                         logger.info(f"  ⏭ Atlandı (düşük etki): {title[:40]}...")
                         continue
 
@@ -487,7 +499,11 @@ def run():
 
         # Check if we have any new news
         if not all_news:
-            logger.info("\n✅ Yeni haber yok - tüm haberler zaten işlenmiş")
+            logger.info("\n⚠️ YENİ HABER YOK - Detaylı analiz:")
+            logger.info(f"  📥 Toplam çekilen: {total_fetched}")
+            logger.info(f"  🔄 Session içi duplikasyon: {skipped_duplicate_session}")
+            logger.info(f"  📋 Sheet'te zaten var: {skipped_duplicate_sheet}")
+            logger.info(f"  📉 Düşük etki (atlandı): {skipped_low_impact}")
             logger.info("=" * 60)
             return
 
@@ -539,7 +555,11 @@ def run():
         logger.info("")
         logger.info("=" * 60)
         logger.info(f"✅ ROBOT 2 TAMAMLANDI!")
-        logger.info(f"  📰 Toplam haber çekildi: {len(all_news)}")
+        logger.info(f"  📥 API'den çekilen: {total_fetched}")
+        logger.info(f"  🔄 Session duplikasyonu: {skipped_duplicate_session}")
+        logger.info(f"  📋 Sheet duplikasyonu: {skipped_duplicate_sheet}")
+        logger.info(f"  📉 Düşük etki (atlandı): {skipped_low_impact}")
+        logger.info(f"  ✅ Yeni haber: {len(all_news)}")
         logger.info(f"  🇹🇷 Türkçeye çevrilen: {len(top_news)}")
         logger.info(f"  💾 Sheet'e kaydedilen: {saved}")
         logger.info(f"  📱 Telegram'a gönderilen: {telegram_sent}/{len(top_news)}")
