@@ -21,7 +21,8 @@ from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.common import (
     get_last_6_batches, status_text, parse_float, analyze_temporal_trend,
-    is_ready_for_analysis, get_rows_with_signals  # ROBUST: Zamanlama bağımsız satır bulma
+    is_ready_for_analysis, get_rows_with_signals,  # ROBUST: Zamanlama bağımsız satır bulma
+    update_separator_status  # Separator satırına robot durumu yaz
 )  # DRY: Import from common
 from utils.telegram_formatter import get_performance_badge
 
@@ -676,6 +677,8 @@ def run():
 
         if not signals:
             logger.warning("⚠ No AI signals found in sheet")
+            # Still update separator row to show robot ran (with 0 published)
+            update_separator_status(ws, cols, 5, 0)
             return
 
         # Read temporal data (last 6 batches for 30-minute trend analysis)
@@ -707,6 +710,8 @@ def run():
 
         if not filtered_signals:
             logger.warning(f"⚠ No signals above {MIN_CONFIDENCE}% confidence")
+            # Still update separator row to show robot ran (with 0 published)
+            update_separator_status(ws, cols, 5, 0)
             return
 
         logger.info(f"Sending signals to Telegram individually ({len(filtered_signals)} signals)...")
@@ -727,8 +732,13 @@ def run():
 
             logger.info(f"✓ Updated {updated}/{len(signals)} rows with Robot 5 ✅")
             logger.info("✓ ROBOT 5 COMPLETED SUCCESSFULLY")
+
+            # Update separator row status (with published count)
+            update_separator_status(ws, cols, 5, updated)
         else:
             logger.error("❌ Failed to send Telegram message")
+            # Still update separator row to show robot ran (with 0 published)
+            update_separator_status(ws, cols, 5, 0)
 
     except Exception as e:
         logger.error(f"❌ ROBOT 5 FAILED: {e}", exc_info=True)

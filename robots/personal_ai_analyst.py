@@ -17,7 +17,8 @@ from utils.assistant_ai import create_personal_analyst
 from utils.common import (
     get_latest_market_data, get_last_6_batches, status_text, analyze_temporal_trend,
     is_ready_for_analysis, BATCH_STATUS_READY,
-    get_unprocessed_ready_rows  # ROBUST: Zamanlama bağımsız satır bulma
+    get_unprocessed_ready_rows,  # ROBUST: Zamanlama bağımsız satır bulma
+    update_separator_status  # Separator satırına robot durumu yaz
 )  # DRY: All common functions from single source
 
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +48,8 @@ def run():
         markets_data = get_unprocessed_ready_rows(ws, cols, cols.BR, "Robot 8")
         if not markets_data:
             logger.warning("⚠️ İşlenecek 'Analiz Hazır' satır yok (Robot 8 için)")
+            # Still update separator row to show robot ran (with 0 processed)
+            update_separator_status(ws, cols, 8, 0)
             return
 
         # Read temporal data (last 6 batches for trend analysis)
@@ -125,9 +128,10 @@ def run():
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 8 TAMAMLANDI")
         logger.info(f"  İşlenen piyasa: {processed}/{len(markets_data)}")
-        if skipped_not_ready > 0:
-            logger.info(f"  ⏳ Beklemede (henüz hazır değil): {skipped_not_ready}")
         logger.info("=" * 80)
+
+        # Update separator row status (even if 0 rows processed)
+        update_separator_status(ws, cols, 8, processed)
 
     except Exception as e:
         logger.error(f"ROBOT 8 BASARISIZ: {e}", exc_info=True)

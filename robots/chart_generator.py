@@ -18,7 +18,8 @@ from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.common import (
     status_text, parse_float, is_ready_for_analysis,
-    get_rows_with_signals  # ROBUST: Zamanlama bağımsız satır bulma
+    get_rows_with_signals,  # ROBUST: Zamanlama bağımsız satır bulma
+    update_separator_status  # Separator satırına robot durumu yaz
 )  # DRY: Import from common
 from utils.api_clients import BinanceClient, PolygonClient
 
@@ -356,6 +357,8 @@ def run():
 
         if not signals:
             logger.warning("⚠ No AI signals found in sheet")
+            # Still update separator row to show robot ran (with 0 processed)
+            update_separator_status(ws, cols, 4, 0)
             return
 
         # Filter by confidence
@@ -363,6 +366,8 @@ def run():
 
         if not high_confidence_signals:
             logger.warning(f"⚠ No signals above {MIN_CONFIDENCE}% confidence")
+            # Still update separator row to show robot ran (with 0 processed)
+            update_separator_status(ws, cols, 4, 0)
             return
 
         logger.info(f"Creating charts for {len(high_confidence_signals)} high-confidence signals...")
@@ -437,6 +442,9 @@ def run():
         logger.info(f"  Failed: {failed}/{len(high_confidence_signals)}")
         logger.info(f"  Chart directory: {CHART_DIR}")
         logger.info("=" * 60)
+
+        # Update separator row status (even if 0 charts created)
+        update_separator_status(ws, cols, 4, successful)
 
     except Exception as e:
         logger.error(f"❌ ROBOT 4 FAILED: {e}", exc_info=True)

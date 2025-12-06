@@ -16,7 +16,8 @@ from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
 from utils.common import (
     status_text, is_ready_for_analysis, BATCH_STATUS_READY,
-    get_rows_ready_for_command_center  # ROBUST: Zamanlama bağımsız satır bulma
+    get_rows_ready_for_command_center,  # ROBUST: Zamanlama bağımsız satır bulma
+    update_separator_status  # Separator satırına robot durumu yaz
 )  # DRY: Import from common
 from utils.assistant_ai import create_assistant, BALANCED_PROFILE
 from utils.meta_analyzer import create_command_center
@@ -149,6 +150,8 @@ def run():
         ready_rows = get_rows_ready_for_command_center(ws, cols)
         if not ready_rows:
             logger.warning("⚠️ Robot 7 için hazır satır yok (Robot 3 + Robot 8 tamamlanmamış)")
+            # Still update separator row to show robot ran (with 0 processed)
+            update_separator_status(ws, cols, 7, 0)
             return
 
         # Initialize assistant and command center
@@ -237,16 +240,11 @@ def run():
 
         logger.info("\n" + "=" * 80)
         logger.info(f"✅ ROBOT 7 TAMAMLANDI")
-        logger.info(f"  İşlenen piyasa: {processed}/{len(data_rows)}")
-        if skipped_not_ready > 0:
-            logger.info(f"  ⏳ Beklemede (toplam): {skipped_not_ready}")
-            if skipped_robot1 > 0:
-                logger.info(f"     └─ Robot 1 (veri) bekliyor: {skipped_robot1}")
-            if skipped_robot3 > 0:
-                logger.info(f"     └─ Robot 3 (AI sinyal) bekliyor: {skipped_robot3}")
-            if skipped_robot8 > 0:
-                logger.info(f"     └─ Robot 8 (Personal AI) bekliyor: {skipped_robot8}")
+        logger.info(f"  İşlenen piyasa: {processed}/{len(ready_rows)}")
         logger.info("=" * 80)
+
+        # Update separator row status (even if 0 rows processed)
+        update_separator_status(ws, cols, 7, processed)
 
     except Exception as e:
         logger.error(f"❌ ROBOT 7 BAŞARISIZ: {e}", exc_info=True)

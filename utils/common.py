@@ -160,6 +160,86 @@ def status_text(robot_no: int, ok: bool) -> str:
     return f"Robot {robot_no} {'✅' if ok else '❌'}"
 
 
+def status_text_with_count(robot_no: int, ok: bool, count: int) -> str:
+    """
+    Generate status text with processed count for separator row
+
+    Args:
+        robot_no: Robot number (1-9)
+        ok: Success status
+        count: Number of rows processed
+
+    Returns:
+        Formatted status string (e.g., "Robot 3 ✅ (24)" or "Robot 5 ✅ (0)")
+    """
+    return f"Robot {robot_no} {'✅' if ok else '❌'} ({count})"
+
+
+def update_separator_status(ws: Any, cols: Any, robot_no: int, processed_count: int, success: bool = True) -> bool:
+    """
+    Update the last separator row with robot status.
+
+    This allows tracking which robots ran in each batch, even if they processed 0 rows.
+    - "Robot 3 ✅ (24)" = Robot 3 ran and processed 24 rows
+    - "Robot 3 ✅ (0)" = Robot 3 ran but found nothing to process
+    - Empty = Robot 3 didn't run at all
+
+    Args:
+        ws: Google Sheets worksheet object
+        cols: Column mapping object
+        robot_no: Robot number (1-9)
+        processed_count: Number of rows processed
+        success: Whether the robot completed successfully
+
+    Returns:
+        True if update succeeded, False otherwise
+    """
+    # Map robot number to status column
+    robot_status_cols = {
+        1: cols.BK,  # Robot 1
+        2: cols.BL,  # Robot 2
+        3: cols.BM,  # Robot 3
+        4: cols.BN,  # Robot 4
+        5: cols.BO,  # Robot 5
+        6: cols.BP,  # Robot 6
+        7: cols.BQ,  # Robot 7
+        8: cols.BR,  # Robot 8
+        9: cols.BS,  # Robot 9
+    }
+
+    if robot_no not in robot_status_cols:
+        logger.warning(f"Unknown robot number: {robot_no}")
+        return False
+
+    status_col = robot_status_cols[robot_no]
+
+    try:
+        # Find last separator row
+        all_rows = ws.get_all_values()
+        separator_row_idx = None
+
+        for i in range(len(all_rows) - 1, 0, -1):
+            if len(all_rows[i]) > cols.B - 1:
+                market_value = all_rows[i][cols.B - 1]
+                if market_value and ("📊" in market_value or "RAPORU" in market_value):
+                    separator_row_idx = i + 1  # 1-based index
+                    break
+
+        if separator_row_idx is None:
+            logger.warning("Separator row not found, cannot update status")
+            return False
+
+        # Update separator row with robot status
+        status = status_text_with_count(robot_no, success, processed_count)
+        ws.update_cell(separator_row_idx, status_col, status)
+        logger.info(f"✓ Separator satırı güncellendi: {status} (satır {separator_row_idx})")
+        return True
+
+    except Exception as e:
+        logger.warning(f"Failed to update separator status: {e}")
+        return False
+
+
 # ============================================================================
 # BATCH COUNTER SYSTEM FOR ROBOT 1 → ROBOT 3 WORKFLOW
 # ============================================================================
