@@ -14,15 +14,18 @@
 # ZAMAN ÇİZELGESİ (Her saat için örnek)
 # =============================================================================
 #
-# :00 → Robot 1 (Data Collection) - 50 sn
+# :00 → Robot 1 (Data Collection) - batch 1
 # :01 → Robot 9 (TP/SL Monitor) - 7 sn
-# :03 → Analysis Pipeline (3,8,7,4,5) - 3-5 dk
-# :04 → Robot 9
-# :05 → Robot 1 + Robot 2 (News, sadece :05'te)
-# :07 → Robot 9
-# :10 → Robot 1
-# ... devam eder
-# :33 → Analysis Pipeline (yarım saatte bir)
+# :05 → Robot 1 - batch 2
+# :08 → Robot 2 (News)
+# :10 → Robot 1 - batch 3
+# :15 → Robot 1 - batch 4
+# :20 → Robot 1 - batch 5
+# :25 → Robot 1 - batch 6 "✅ Analiz Hazır"
+# :27 → Analysis Pipeline (3,8,7,4,5) - İŞTE ŞİMDİ ÇALIŞMALI!
+# :30 → Robot 1 - batch 1 (yeni döngü)
+# :55 → Robot 1 - batch 6 "✅ Analiz Hazır"
+# :57 → Analysis Pipeline (3,8,7,4,5)
 #
 # =============================================================================
 
@@ -59,12 +62,14 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Analysis Pipeline: Robots 3,8,7,4,5
-  # Schedule: Her 30 dakikada, 3 dakika offset (:03, :33)
+  # Schedule: Her 30 dakikada, batch 6 tamamlandıktan HEMEN SONRA (:27, :57)
   # Süre: ~3-5 dakika
-  # Robot 1 :00/:30'da başlar, :01'de biter → :03'te analiz başlar (güvenli)
+  # Robot 1 batch 6 "✅ Analiz Hazır" yazıyor → :25 ve :55'te
+  # Analysis :27 ve :57'de çalışıp "Analiz Hazır" satırları işliyor
+  # :30/:00'da Robot 1 yeni batch başlatmadan ÖNCE çalışmalı!
   # ---------------------------------------------------------------------------
   analysis-pipeline:
-    schedule: "3,33 * * * *"
+    schedule: "27,57 * * * *"
     timezone: "Europe/Istanbul"
     endpoint: "/analysis-pipeline"
     description: "AI analiz pipeline: sinyal üretimi + Telegram"
@@ -201,7 +206,7 @@ jobs:
 #
 # gcloud scheduler jobs update http analysis-pipeline \
 #     --location=europe-west1 \
-#     --schedule="3,33 * * * *" \
+#     --schedule="27,57 * * * *" \
 #     --time-zone="Europe/Istanbul"
 #
 # gcloud scheduler jobs update http news-monitor \
