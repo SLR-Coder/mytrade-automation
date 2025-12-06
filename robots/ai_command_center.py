@@ -14,7 +14,10 @@ from typing import Dict, List, Optional
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
 from utils.schema import resolve_columns
-from utils.common import status_text, is_ready_for_analysis, BATCH_STATUS_READY  # DRY: Import from common
+from utils.common import (
+    status_text, is_ready_for_analysis, BATCH_STATUS_READY,
+    get_rows_ready_for_command_center  # ROBUST: Zamanlama bağımsız satır bulma
+)  # DRY: Import from common
 from utils.assistant_ai import create_assistant, BALANCED_PROFILE
 from utils.meta_analyzer import create_command_center
 
@@ -141,28 +144,12 @@ def run():
 
         logger.info(f"✓ Google Sheets bağlantısı kuruldu: {SHEET_TAB}")
 
-        # Get all rows
-        all_rows = ws.get_all_values()
-
-        if len(all_rows) <= 1:
-            logger.warning("⚠️ Sheet'te veri yok")
+        # ROBUST APPROACH: Find ALL rows where Robot 3 AND Robot 8 are complete
+        # This is TIMING-INDEPENDENT - works even if timing is off!
+        ready_rows = get_rows_ready_for_command_center(ws, cols)
+        if not ready_rows:
+            logger.warning("⚠️ Robot 7 için hazır satır yok (Robot 3 + Robot 8 tamamlanmamış)")
             return
-
-        # Find last separator (Robot 1 creates separator with "📊 VERİ TOPLAMA RAPORU" in column B)
-        separator_idx = None
-        for i in range(len(all_rows) - 1, 0, -1):
-            if len(all_rows[i]) > cols.B - 1:
-                market_value = all_rows[i][cols.B - 1]
-                if market_value and ("📊" in market_value or "RAPORU" in market_value):
-                    separator_idx = i
-                    break
-
-        if separator_idx is None:
-            data_rows = all_rows[1:]
-        else:
-            data_rows = all_rows[separator_idx + 1:]
-
-        logger.info(f"✓ {len(data_rows)} piyasa satırı bulundu")
 
         # Initialize assistant and command center
         assistant = create_assistant(BALANCED_PROFILE)
@@ -172,62 +159,15 @@ def run():
 
         # Process each market
         processed = 0
-        skipped_not_ready = 0
-        skipped_robot1 = 0
-        skipped_robot3 = 0
-        skipped_robot8 = 0
 
-        for row in data_rows:
-            # Skip empty rows
-            if len(row) < cols.B or not row[cols.B - 1]:
-                continue
+        for market_data in ready_rows:
+            market = market_data["market"]
+            price = market_data["price"]
+            row_index = market_data["row_index"]
+            row = market_data["row_data"]
 
-            market = row[cols.B - 1]
-            row_index = all_rows.index(row) + 1
-
-            try:
-                # Parse price
-                price_str = row[cols.C - 1] if len(row) > cols.C - 1 and row[cols.C - 1] else "0"
-                price = float(price_str.replace(",", "."))
-            except:
-                price = 0
-
-            # 1. FLAG KONTROLÜ - Tüm ön koşullar sağlanmalı
-            # Robot 1: BK sütunu - "✅ Analiz Hazır"
-            robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
-            # Robot 3: BM sütunu - AI sinyalleri oluşturuldu
-            robot3_status = row[cols.BM - 1] if len(row) > cols.BM - 1 else ""
-            # Robot 8: BR sütunu - Personal AI analizi yapıldı
-            robot8_status = row[cols.BR - 1] if len(row) > cols.BR - 1 else ""
-
-            # Flag kontrolü - Tüm robotlar hazır olmalı
-            robot1_ready = is_ready_for_analysis(robot1_status)
-            robot3_ready = "Robot 3" in robot3_status and "✅" in robot3_status
-            robot8_ready = "Robot 8" in robot8_status and "✅" in robot8_status
-
-            if not robot1_ready:
-                skipped_not_ready += 1
-                skipped_robot1 += 1
-                continue  # Robot 1 henüz veri toplamadı
-
-            if not robot3_ready:
-                skipped_not_ready += 1
-                skipped_robot3 += 1
-                continue  # Robot 3 henüz AI sinyalleri oluşturmadı
-
-            if not robot8_ready:
-                skipped_not_ready += 1
-                skipped_robot8 += 1
-                continue  # Robot 8 henüz Personal AI analizi yapmadı
-
-            # 2. Robot 7 status kontrolü - Zaten işlenmişse atla (BQ sütunu)
-            try:
-                current_status = ws.cell(row_index, cols.BQ).value or ""
-                if "Robot 7" in current_status and "✅" in current_status:
-                    logger.info(f"⏭️  {market} zaten işlenmiş (Robot 7 ✅), atlanıyor...")
-                    continue
-            except:
-                pass  # Status okunamazsa devam et
+            # NOTE: All prerequisite checks are done in get_rows_ready_for_command_center()
+            # No need to check Robot 1/3/8 status again here!
 
             logger.info(f"\n{'='*60}")
             logger.info(f"📊 {market} @ ${price:,.2f} (Satır {row_index})")

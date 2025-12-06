@@ -412,6 +412,238 @@ def get_latest_market_data(ws: Any, cols: Any) -> List[Dict]:
     return markets_data
 
 
+def get_unprocessed_ready_rows(
+    ws: Any,
+    cols: Any,
+    robot_status_col: int,
+    robot_name: str,
+    max_rows: int = 500
+) -> List[Dict]:
+    """
+    Find ALL rows that are ready for analysis but not yet processed by a robot.
+
+    ROBUST APPROACH: This function is TIMING-INDEPENDENT!
+    - Looks at last N rows (not just latest batch)
+    - Finds rows with "✅ Analiz Hazır" in BK column
+    - Filters to rows where robot hasn't processed yet
+    - Works even if Robot 1 timing is off or delayed
+
+    Args:
+        ws: Google Sheets worksheet object
+        cols: Column mapping object
+        robot_status_col: Column number for robot status (e.g., cols.BM for Robot 3)
+        robot_name: Robot name to check in status (e.g., "Robot 3")
+        max_rows: Maximum rows to scan (default 500 = ~20 hours of data)
+
+    Returns:
+        List of market data dictionaries ready for processing
+    """
+    logger.info(f"🔍 {robot_name} için işlenmemiş 'Analiz Hazır' satırları aranıyor...")
+
+    all_rows = ws.get_all_values()
+    if len(all_rows) <= 1:
+        logger.warning("⚠️ Sheet'te veri yok")
+        return []
+
+    # Scan last N rows (skip header)
+    start_scan = max(1, len(all_rows) - max_rows)
+    scan_rows = all_rows[start_scan:]
+
+    markets_data = []
+    ready_count = 0
+    already_processed_count = 0
+
+    for offset, row in enumerate(scan_rows):
+        # Skip separator rows
+        if len(row) > cols.B - 1:
+            market_value = row[cols.B - 1]
+            if market_value and ("📊" in market_value or "RAPORU" in market_value):
+                continue
+
+        # Skip empty rows
+        if len(row) < cols.B or not row[cols.B - 1]:
+            continue
+
+        market = row[cols.B - 1]
+        row_index = start_scan + offset + 1  # 1-based
+
+        # Check BK column: Is this row ready for analysis?
+        robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
+        if not is_ready_for_analysis(robot1_status):
+            continue  # Not ready, skip
+
+        ready_count += 1
+
+        # Check robot status column: Already processed?
+        current_status = row[robot_status_col - 1] if len(row) > robot_status_col - 1 else ""
+        if robot_name in current_status and "✅" in current_status:
+            already_processed_count += 1
+            continue  # Already processed, skip
+
+        # Parse price
+        try:
+            price_str = row[cols.C - 1] if len(row) > cols.C - 1 and row[cols.C - 1] else "0"
+            price = parse_float(price_str) or 0.0
+        except:
+            price = 0.0
+
+        # Parse technical indicators
+        indicators = {}
+        try:
+            if len(row) > cols.G - 1:
+                indicators['rsi'] = parse_float(row[cols.G - 1])
+            if len(row) > cols.H - 1:
+                indicators['macd'] = parse_float(row[cols.H - 1])
+            if len(row) > cols.I - 1:
+                indicators['macd_signal'] = parse_float(row[cols.I - 1])
+            if len(row) > cols.J - 1:
+                indicators['macd_histogram'] = parse_float(row[cols.J - 1])
+            if len(row) > cols.K - 1:
+                indicators['bb_upper'] = parse_float(row[cols.K - 1])
+            if len(row) > cols.L - 1:
+                indicators['bb_middle'] = parse_float(row[cols.L - 1])
+            if len(row) > cols.M - 1:
+                indicators['bb_lower'] = parse_float(row[cols.M - 1])
+            if len(row) > cols.N - 1:
+                indicators['ema_9'] = parse_float(row[cols.N - 1])
+            if len(row) > cols.O - 1:
+                indicators['ema_21'] = parse_float(row[cols.O - 1])
+            if len(row) > cols.P - 1:
+                indicators['ema_50'] = parse_float(row[cols.P - 1])
+            if len(row) > cols.Q - 1:
+                indicators['ema_200'] = parse_float(row[cols.Q - 1])
+            if len(row) > cols.R - 1:
+                indicators['support'] = parse_float(row[cols.R - 1])
+            if len(row) > cols.S - 1:
+                indicators['resistance'] = parse_float(row[cols.S - 1])
+            if len(row) > cols.T - 1:
+                indicators['trend'] = row[cols.T - 1]
+
+            # SMC indicators
+            if len(row) > cols.U - 1:
+                indicators['fvg_status'] = row[cols.U - 1] if row[cols.U - 1] != "-" else None
+            if len(row) > cols.Y - 1:
+                indicators['rsi_divergence'] = row[cols.Y - 1] if row[cols.Y - 1] != "-" else None
+            if len(row) > cols.Z - 1:
+                indicators['structure_break'] = row[cols.Z - 1] if row[cols.Z - 1] != "-" else None
+        except Exception as e:
+            logger.warning(f"⚠️ Indicator parse hatası {market}: {e}")
+
+        markets_data.append({
+            "market": market,
+            "price": price,
+            "indicators": indicators,
+            "row_index": row_index
+        })
+
+    logger.info(f"✓ Tarama: {len(scan_rows)} satır, {ready_count} hazır, {already_processed_count} zaten işlenmiş")
+    logger.info(f"✓ {robot_name} için {len(markets_data)} işlenmemiş satır bulundu")
+
+    return markets_data
+
+
+def get_rows_ready_for_command_center(
+    ws: Any,
+    cols: Any,
+    max_rows: int = 500
+) -> List[Dict]:
+    """
+    Find ALL rows ready for Robot 7 (Command Center) - requires Robot 3 AND Robot 8 complete.
+
+    ROBUST APPROACH: This function is TIMING-INDEPENDENT!
+    - Looks at last N rows (not just latest batch)
+    - Requires: BK = "✅ Analiz Hazır" (Robot 1)
+    - Requires: BM = "Robot 3 ✅" (Robot 3 complete)
+    - Requires: BR = "Robot 8 ✅" (Robot 8 complete)
+    - Excludes: BQ = "Robot 7 ✅" (already processed)
+
+    Args:
+        ws: Google Sheets worksheet object
+        cols: Column mapping object
+        max_rows: Maximum rows to scan (default 500 = ~20 hours of data)
+
+    Returns:
+        List of dicts with market, price, row_index, and AI signals
+    """
+    logger.info("🔍 Robot 7 için hazır satırlar aranıyor (Robot 3 + Robot 8 tamamlanmış)...")
+
+    all_rows = ws.get_all_values()
+    if len(all_rows) <= 1:
+        logger.warning("⚠️ Sheet'te veri yok")
+        return []
+
+    # Scan last N rows (skip header)
+    start_scan = max(1, len(all_rows) - max_rows)
+    scan_rows = all_rows[start_scan:]
+
+    markets_data = []
+    robot1_ready_count = 0
+    robot3_ready_count = 0
+    robot8_ready_count = 0
+    already_processed_count = 0
+
+    for offset, row in enumerate(scan_rows):
+        # Skip separator rows
+        if len(row) > cols.B - 1:
+            market_value = row[cols.B - 1]
+            if market_value and ("📊" in market_value or "RAPORU" in market_value):
+                continue
+
+        # Skip empty rows
+        if len(row) < cols.B or not row[cols.B - 1]:
+            continue
+
+        market = row[cols.B - 1]
+        row_index = start_scan + offset + 1  # 1-based
+
+        # Check Robot 1: BK = "✅ Analiz Hazır"
+        robot1_status = row[cols.BK - 1] if len(row) > cols.BK - 1 else ""
+        if not is_ready_for_analysis(robot1_status):
+            continue
+        robot1_ready_count += 1
+
+        # Check Robot 3: BM = "Robot 3 ✅"
+        robot3_status = row[cols.BM - 1] if len(row) > cols.BM - 1 else ""
+        if not ("Robot 3" in robot3_status and "✅" in robot3_status):
+            continue
+        robot3_ready_count += 1
+
+        # Check Robot 8: BR = "Robot 8 ✅"
+        robot8_status = row[cols.BR - 1] if len(row) > cols.BR - 1 else ""
+        if not ("Robot 8" in robot8_status and "✅" in robot8_status):
+            continue
+        robot8_ready_count += 1
+
+        # Check Robot 7: BQ != "Robot 7 ✅" (not already processed)
+        robot7_status = row[cols.BQ - 1] if len(row) > cols.BQ - 1 else ""
+        if "Robot 7" in robot7_status and "✅" in robot7_status:
+            already_processed_count += 1
+            continue
+
+        # Parse price
+        try:
+            price_str = row[cols.C - 1] if len(row) > cols.C - 1 and row[cols.C - 1] else "0"
+            price = parse_float(price_str) or 0.0
+        except:
+            price = 0.0
+
+        markets_data.append({
+            "market": market,
+            "price": price,
+            "row_index": row_index,
+            "row_data": row  # Pass full row for AI signal parsing
+        })
+
+    logger.info(f"✓ Tarama: {len(scan_rows)} satır")
+    logger.info(f"  - Robot 1 hazır: {robot1_ready_count}")
+    logger.info(f"  - Robot 3 tamamlanmış: {robot3_ready_count}")
+    logger.info(f"  - Robot 8 tamamlanmış: {robot8_ready_count}")
+    logger.info(f"  - Robot 7 zaten işlemiş: {already_processed_count}")
+    logger.info(f"✓ Robot 7 için {len(markets_data)} işlenmemiş satır bulundu")
+
+    return markets_data
+
+
 def get_last_6_batches(ws: Any, cols: Any) -> Dict[str, List[Dict]]:
     """
     Read last 6 batches of market data for temporal trend analysis

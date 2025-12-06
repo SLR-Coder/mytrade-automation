@@ -19,7 +19,8 @@ from config.constants import (
 from utils.common import (
     status_text, parse_float, get_latest_market_data,
     get_last_6_batches, analyze_temporal_trend,
-    is_ready_for_analysis, BATCH_STATUS_READY
+    is_ready_for_analysis, BATCH_STATUS_READY,
+    get_unprocessed_ready_rows  # ROBUST: Zamanlama bağımsız satır bulma
 )  # DRY: All common functions from single source
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
@@ -133,10 +134,12 @@ async def run():
         ws = gc.open_by_key(sheet_id).worksheet(SHEET_TAB)
         cols = resolve_columns(ws)
 
-        # Read latest market data (for current prices and row indices)
-        markets_data = get_latest_market_data(ws, cols)
+        # ROBUST APPROACH: Find ALL unprocessed "Analiz Hazır" rows
+        # This is TIMING-INDEPENDENT - works even if Robot 1 is delayed!
+        # BM column = Robot 3 status column
+        markets_data = get_unprocessed_ready_rows(ws, cols, cols.BM, "Robot 3")
         if not markets_data:
-            logger.warning("⚠️ Analiz edilecek piyasa yok")
+            logger.warning("⚠️ İşlenecek 'Analiz Hazır' satır yok (Robot 3 için)")
             return
 
         # Read temporal data (last 6 batches for trend analysis)
@@ -145,7 +148,6 @@ async def run():
         logger.info(f"\n🎯 {len(markets_data)} piyasa için TEMPORAL TREND analizi başlıyor...\n")
 
         processed = 0
-        skipped_not_ready = 0
 
         for market_data in markets_data:
             market = market_data["market"]
@@ -153,23 +155,8 @@ async def run():
             indicators = market_data["indicators"]
             row_index = market_data["row_index"]
 
-            # 1. Batch status kontrolü - Robot 1 "✅ Analiz Hazır" yazmış mı? (BK sütunu)
-            try:
-                robot1_status = ws.cell(row_index, cols.BK).value or ""
-                if not is_ready_for_analysis(robot1_status):
-                    skipped_not_ready += 1
-                    continue  # Sessizce atla - henüz hazır değil
-            except:
-                pass  # Status okunamazsa devam et
-
-            # 2. Robot 3 status kontrolü - Zaten işlenmişse atla (BM sütunu)
-            try:
-                current_status = ws.cell(row_index, cols.BM).value or ""
-                if "Robot 3" in current_status and "✅" in current_status:
-                    logger.info(f"⏭️  {market} zaten işlenmiş (Robot 3 ✅), atlanıyor...")
-                    continue
-            except:
-                pass  # Status okunamazsa devam et
+            # NOTE: BK and BM checks are now done in get_unprocessed_ready_rows()
+            # No need to check again here!
 
             # Analyze temporal trend (last 30 minutes)
             temporal_summary = "İlk analiz - henüz geçmiş veri yok"
