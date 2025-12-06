@@ -685,22 +685,10 @@ def run():
                 logger.error(f"❌ Supabase write failed: {e}")
 
         # ═══════════════════════════════════════════════════════════════
-        # WRITE TO GOOGLE SHEETS (Legacy + Full Data)
+        # UPDATE MONITORING DASHBOARD (Sadece robot durumu)
         # ═══════════════════════════════════════════════════════════════
-        if all_data:
-            logger.info("=" * 60)
-
-            # Calculate batch number and status
-            batch_number = get_batch_number(ws, cols)
-            batch_status = batch_status_text(batch_number)
-            logger.info(f"📊 Batch: {batch_number}/6 → {batch_status}")
-
-            logger.info(f"Writing {len(all_data)} markets to Google Sheets...")
-            write_to_sheet(ws, cols, all_data, batch_status)
-
-        # ═══════════════════════════════════════════════════════════════
-        # UPDATE MONITORING DASHBOARD
-        # ═══════════════════════════════════════════════════════════════
+        # NOT: Piyasa verileri artık Supabase'e yazılıyor
+        # Google Sheets sadece robot durumlarını gösteriyor
         try:
             detail = f"{len(all_data)} piyasa toplandı"
             if skipped_markets:
@@ -724,7 +712,7 @@ def run():
             logger.info("✅ ROBOT 1 COMPLETED SUCCESSFULLY")
             logger.info(f"   📊 Markets: {len(all_data)}/{TOTAL_MARKETS}")
             logger.info(f"   💾 Supabase: {'✅' if supabase_success else '❌'}")
-            logger.info(f"   📋 Sheets: ✅")
+            logger.info(f"   📋 Monitoring: ✅")
             logger.info("=" * 60)
         else:
             logger.warning("⚠ No market data collected")
