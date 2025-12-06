@@ -1,15 +1,16 @@
-# Session Handoff - 6 Aralik 2025 (Guncellendi)
+# Session Handoff - 6 Aralik 2025 (Guncellendi v2)
 
 ## SON DURUM - HIZLI OZET
 
-**3 KRITIK IYILESTIRME:**
+**4 KRITIK IYILESTIRME:**
 1. Analysis Pipeline zamanlama sorunu (scheduler)
 2. Robotlar timing-dependent'di (artık ROBUST)
-3. **YENİ:** Separator satırı status takibi (observability)
+3. Separator satırı status takibi (observability)
+4. **YENİ:** Cloud Run SIGTERM sorunu (robotlar yarıda kesiliyordu!)
 
 - **Cloud Run URL**: `https://mytrade-automation-310689682340.europe-west1.run.app`
 - **Branch**: `claude/review-session-handoff-012ZpGsNTsLeNi7ZdJTtVVJ3`
-- **Son Commit**: Add separator row status tracking for observability
+- **Son Commit**: Fix Cloud Run SIGTERM causing robots to terminate prematurely
 
 ---
 
@@ -85,7 +86,61 @@ Analysis Pipeline `:27`de calisinca son batch "Analiz Hazır" olur.
 
 ---
 
-## BUG 2: ROBOTLAR TIMING-DEPENDENT'DI (6 Aralik)
+## BUG 2: CLOUD RUN SIGTERM SORUNU (6 Aralik) - YENİ!
+
+### Problem: Robot 3 yarıda kalıyor, Robot 8 hiç çalışmıyor!
+
+**Loglardan görülen:**
+```
+09:27:00 - Running Analysis Pipeline: Robots 3,8,7,4,5
+09:27:02 - Worker exiting (pid: 2)     ← SADECE 2 SANİYE SONRA!
+09:27:03 - Shutting down: Master
+```
+
+**Kök Neden:** Cloud Run SIGTERM gönderdiğinde:
+1. SIGTERM tüm process'lere gidiyor (gunicorn + subprocess)
+2. `main.py`'deki signal handler hemen `shutdown_requested = True` yapıyordu
+3. Bu, kalan robotların atlanmasına neden oluyordu!
+
+```python
+# SORUNLU KOD (eskiden):
+if "3" in robot_select and not shutdown_requested:  # Robot 3 başlar
+if "8" in robot_select and not shutdown_requested:  # SIGTERM geldi → ATLANIYOR!
+if "7" in robot_select and not shutdown_requested:  # ATLANIYOR!
+```
+
+### Çözüm: 3 Kritik Düzeltme
+
+**1. Dockerfile - gunicorn graceful-timeout:**
+```dockerfile
+CMD ["python", "-m", "gunicorn", ... "--graceful-timeout", "600", ...]
+```
+Shutdown sırasında worker'ların işlerini bitirmesi için 10 dakika bekler.
+
+**2. main.py - SIGTERM handling:**
+```python
+def signal_handler(signum, frame):
+    if signum == signal.SIGINT:
+        # Ctrl+C - hemen dur
+        shutdown_requested = True
+    elif signum == signal.SIGTERM:
+        # Cloud Run shutdown - DURMA, devam et!
+        sigterm_received = True
+        logger.warning("SIGTERM alındı ama işe devam ediyorum...")
+```
+SIGTERM artık robotları durdurmaz, sadece loglar.
+
+**3. server.py - Concurrent request koruması:**
+```python
+if analysis_pipeline_running:
+    return 429  # Too Many Requests - reddedildi
+analysis_pipeline_running = True
+```
+Aynı anda birden fazla Analysis Pipeline çalışmasını önler.
+
+---
+
+## BUG 3: ROBOTLAR TIMING-DEPENDENT'DI (6 Aralik)
 
 ### Problem: Robot 1 gecikince tum sistem duruyordu
 
@@ -210,4 +265,4 @@ git pull origin claude/review-session-handoff-012ZpGsNTsLeNi7ZdJTtVVJ3
 
 ---
 
-*Son guncelleme: 6 Aralik 2025*
+*Son guncelleme: 6 Aralik 2025 (SIGTERM fix eklendi)*
