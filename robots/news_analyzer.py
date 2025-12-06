@@ -20,7 +20,8 @@ from telegram.constants import ParseMode
 
 from utils.secrets import get_secret
 from utils.auth import get_gspread_client
-from utils.common import status_text
+from utils.supabase_client import insert_news, get_recent_news_titles
+from utils.monitoring import update_robot_status as update_monitoring
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Robot-2-NewsAnalyzer")
@@ -567,8 +568,36 @@ def run():
         logger.info(f"  🟡 Orta etki: {len([n for n in top_news if n.impact == 'ORTA'])}")
         logger.info("=" * 60)
 
+        # Update monitoring dashboard
+        try:
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=2,
+                success=True,
+                count=telegram_sent,
+                detail=f"{telegram_sent} haber" if telegram_sent else "Yeni haber yok"
+            )
+        except Exception as e:
+            logger.warning(f"Monitoring update failed: {e}")
+
     except Exception as e:
         logger.error(f"❌ ROBOT 2 FAILED: {e}", exc_info=True)
+        # Update monitoring with error
+        try:
+            gc = get_gspread_client()
+            sheet_id = get_secret("GOOGLE_SHEETS_SPREADSHEET_ID")
+            update_monitoring(
+                gc=gc,
+                sheet_id=sheet_id,
+                robot_number=2,
+                success=False,
+                count=0,
+                detail="",
+                error=str(e)[:50]
+            )
+        except:
+            pass
         raise
 
 
