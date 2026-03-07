@@ -1,116 +1,236 @@
-# Cloud Scheduler Configuration for MyTrade
-# All times in Turkey Time (GMT+3)
-# Format: minute hour day month day-of-week
-
 # =============================================================================
-# HOURLY MARKET UPDATES (Her saat başı)
+# SCHEDULER CONFIG V3 - AKILLI ZAMANLAMA (Türkiye Saati Optimized)
 # =============================================================================
-hourly_update:
-  schedule: "0 * * * *"
-  timezone: "Europe/Istanbul"
-  description: "Hourly market price update and quick analysis"
-  robots: "1,5"
-  env_vars:
-    ROBOT: "1,5"
-    MESSAGE_TYPE: "hourly_update"
-    MIN_CONFIDENCE: "70"
-
-# =============================================================================
-# FOREX SESSION SCHEDULES (Piyasa saatleri)
+#
+# Tasarım Prensipleri:
+# 1. Hiçbir job aynı dakikada çalışmaz (çakışma yok)
+# 2. Robot 1 her zaman Analysis Pipeline'dan ÖNCE biter
+# 3. Piyasa açılış saatlerine göre yoğunlaştırılmış çalışma
+# 4. Günlük 03:00 TR reset mekanizması
+#
 # =============================================================================
 
-# PRE-LONDON ANALYSIS (10:00 Turkey Time)
-pre_london:
-  schedule: "0 10 * * 1-5"
-  timezone: "Europe/Istanbul"
-  description: "Pre-London session analysis (1 hour before open)"
-  robots: "1,2,3,4,5"
-  env_vars:
-    ROBOT: "1,2,3,4,5"
-    MESSAGE_TYPE: "pre_session"
-    SESSION_NAME: "LONDON"
-    SESSION_TIME: "11:00"
-    MIN_CONFIDENCE: "65"
-
-# LONDON OPEN (11:00 Turkey Time)
-london_open:
-  schedule: "0 11 * * 1-5"
-  timezone: "Europe/Istanbul"
-  description: "London session open - Full signals"
-  robots: "1,2,3,4,5,6"
-  env_vars:
-    ROBOT: "1,2,3,4,5,6"
-    MESSAGE_TYPE: "session_open"
-    SESSION_NAME: "LONDON"
-    MIN_CONFIDENCE: "60"
-
-# PRE-NEW YORK ANALYSIS (15:00 Turkey Time)
-pre_newyork:
-  schedule: "0 15 * * 1-5"
-  timezone: "Europe/Istanbul"
-  description: "Pre-New York session analysis (1 hour before open)"
-  robots: "1,2,3,4,5"
-  env_vars:
-    ROBOT: "1,2,3,4,5"
-    MESSAGE_TYPE: "pre_session"
-    SESSION_NAME: "NEW_YORK"
-    SESSION_TIME: "16:00"
-    MIN_CONFIDENCE: "65"
-
-# NEW YORK OPEN (16:00 Turkey Time)
-newyork_open:
-  schedule: "0 16 * * 1-5"
-  timezone: "Europe/Istanbul"
-  description: "New York session open - Full signals"
-  robots: "1,2,3,4,5,6"
-  env_vars:
-    ROBOT: "1,2,3,4,5,6"
-    MESSAGE_TYPE: "session_open"
-    SESSION_NAME: "NEW_YORK"
-    MIN_CONFIDENCE: "60"
-
-# PEAK VOLATILITY (17:00 Turkey Time - London+NY Overlap)
-peak_volatility:
-  schedule: "0 17 * * 1-5"
-  timezone: "Europe/Istanbul"
-  description: "Peak volatility period (London+NY overlap)"
-  robots: "1,3,5"
-  env_vars:
-    ROBOT: "1,3,5"
-    MESSAGE_TYPE: "peak_volatility"
-    MIN_CONFIDENCE: "70"
-
-# DAILY SUMMARY (20:00 Turkey Time - London Close)
-daily_summary:
-  schedule: "0 20 * * 1-5"
-  timezone: "Europe/Istanbul"
-  description: "Daily performance summary"
-  robots: "6,5"
-  env_vars:
-    ROBOT: "6,5"
-    MESSAGE_TYPE: "daily_summary"
-
-# WEEKLY SUMMARY (Friday 21:00 Turkey Time)
-weekly_summary:
-  schedule: "0 21 * * 5"
-  timezone: "Europe/Istanbul"
-  description: "Weekly performance summary"
-  robots: "6,5"
-  env_vars:
-    ROBOT: "6,5"
-    MESSAGE_TYPE: "weekly_summary"
+# =============================================================================
+# ZAMAN ÇİZELGESİ (Her saat için örnek)
+# =============================================================================
+#
+# :00 → Robot 1 (Data Collection) - batch 1
+# :01 → Robot 9 (TP/SL Monitor) - 7 sn
+# :05 → Robot 1 - batch 2
+# :08 → Robot 2 (News)
+# :10 → Robot 1 - batch 3
+# :15 → Robot 1 - batch 4
+# :20 → Robot 1 - batch 5
+# :25 → Robot 1 - batch 6 "✅ Analiz Hazır"
+# :27 → Analysis Pipeline (3,8,7,4,5) - İŞTE ŞİMDİ ÇALIŞMALI!
+# :30 → Robot 1 - batch 1 (yeni döngü)
+# :55 → Robot 1 - batch 6 "✅ Analiz Hazır"
+# :57 → Analysis Pipeline (3,8,7,4,5)
+#
+# =============================================================================
 
 # =============================================================================
-# HEALTH CHECK (Continuous monitoring)
+# ANA SCHEDULE (Cloud Scheduler Jobs)
 # =============================================================================
-health_check:
-  schedule: "*/5 * * * *"
-  timezone: "Europe/Istanbul"
-  description: "Health check for all system components"
-  command: "python health_check.py"
-  env_vars:
-    SEND_ALERTS: "true"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Robot 1: Data Collection
+  # Schedule: Her 5 dakikada (:00, :05, :10, :15, :20, :25, :30, :35, :40, :45, :50, :55)
+  # Süre: ~50 saniye
+  # ---------------------------------------------------------------------------
+  data-collection:
+    schedule: "*/5 * * * *"
+    timezone: "Europe/Istanbul"
+    endpoint: "/data-collection"
+    description: "Robot 1: Market veri toplama (24 piyasa)"
+    estimated_duration: "50s"
+    priority: "critical"
+
+  # ---------------------------------------------------------------------------
+  # Robot 9: TP/SL Monitor
+  # Schedule: Her 3 dakikada, 1 dakika offset (:01, :04, :07, :10, :13, :16...)
+  # Süre: ~7 saniye
+  # ---------------------------------------------------------------------------
+  tp-sl-monitor:
+    schedule: "1-58/3 * * * *"
+    timezone: "Europe/Istanbul"
+    endpoint: "/tp-sl-monitor"
+    description: "Robot 9: TP/SL gerçek zamanlı takip"
+    estimated_duration: "7s"
+    priority: "high"
+
+  # ---------------------------------------------------------------------------
+  # Analysis Pipeline: Robots 3,8,7,4,5
+  # Schedule: Her 30 dakikada, batch 6 tamamlandıktan HEMEN SONRA (:27, :57)
+  # Süre: ~3-5 dakika
+  # Robot 1 batch 6 "✅ Analiz Hazır" yazıyor → :25 ve :55'te
+  # Analysis :27 ve :57'de çalışıp "Analiz Hazır" satırları işliyor
+  # :30/:00'da Robot 1 yeni batch başlatmadan ÖNCE çalışmalı!
+  # ---------------------------------------------------------------------------
+  analysis-pipeline:
+    schedule: "27,57 * * * *"
+    timezone: "Europe/Istanbul"
+    endpoint: "/analysis-pipeline"
+    description: "AI analiz pipeline: sinyal üretimi + Telegram"
+    estimated_duration: "3-5min"
+    priority: "critical"
+    depends_on: "data-collection"
+
+  # ---------------------------------------------------------------------------
+  # Robot 2: News Monitor
+  # Schedule: Her saat :08'de (Robot 1 :05'te bittikten sonra)
+  # Süre: ~30 saniye
+  # ---------------------------------------------------------------------------
+  news-monitor:
+    schedule: "8 * * * *"
+    timezone: "Europe/Istanbul"
+    endpoint: "/news-monitor"
+    description: "Robot 2: Haber analizi"
+    estimated_duration: "30s"
+    priority: "medium"
+
+  # ---------------------------------------------------------------------------
+  # Daily Full Cycle Reset (03:00 TR)
+  # Her gün 03:00'da tam döngü başlatır
+  # Tokyo açılışı ile senkronize
+  # ---------------------------------------------------------------------------
+  daily-reset:
+    schedule: "0 3 * * *"
+    timezone: "Europe/Istanbul"
+    endpoint: "/full-cycle"
+    description: "Günlük reset: Robot 1 → bekle → Analysis Pipeline"
+    estimated_duration: "6min"
+    priority: "critical"
+
+  # ---------------------------------------------------------------------------
+  # Performance Tracker
+  # Schedule: Her gün 23:00 TR (piyasa kapanışı)
+  # ---------------------------------------------------------------------------
+  performance-tracker:
+    schedule: "0 23 * * *"
+    timezone: "Europe/Istanbul"
+    endpoint: "/performance-tracker"
+    description: "Robot 6: Günlük performans raporu"
+    estimated_duration: "30s"
+    priority: "low"
+
+  # ---------------------------------------------------------------------------
+  # Weekly Report
+  # Schedule: Her Pazar 00:00 TR
+  # ---------------------------------------------------------------------------
+  weekly-report:
+    schedule: "0 0 * * 0"
+    timezone: "Europe/Istanbul"
+    endpoint: "/weekly-report"
+    description: "Haftalık Telegram performans raporu"
+    estimated_duration: "60s"
+    priority: "low"
 
 # =============================================================================
-# DEPLOYMENT COMMANDS
+# ÇAKIŞMA MATRİSİ (Her dakika için)
+# =============================================================================
+#
+# Dakika | Job
+# -------|------------------
+# :00    | Robot 1
+# :01    | Robot 9
+# :03    | Analysis Pipeline
+# :04    | Robot 9
+# :05    | Robot 1
+# :07    | Robot 9
+# :08    | Robot 2 (News)
+# :10    | Robot 1, Robot 9
+# :13    | Robot 9
+# :15    | Robot 1
+# :16    | Robot 9
+# :19    | Robot 9
+# :20    | Robot 1
+# :22    | Robot 9
+# :25    | Robot 1, Robot 9
+# :28    | Robot 9
+# :30    | Robot 1
+# :31    | Robot 9
+# :33    | Analysis Pipeline
+# :34    | Robot 9
+# :35    | Robot 1
+# :37    | Robot 9
+# :40    | Robot 1, Robot 9
+# :43    | Robot 9
+# :45    | Robot 1
+# :46    | Robot 9
+# :49    | Robot 9
+# :50    | Robot 1
+# :52    | Robot 9
+# :55    | Robot 1, Robot 9
+# :58    | Robot 9
+#
+# NOT: :10, :25, :40, :55'te Robot 1 ve Robot 9 aynı anda başlıyor
+# Ama Robot 9 sadece 7sn sürdüğü için çakışma sorunu yok.
+#
+# =============================================================================
+
+# =============================================================================
+# PİYASA SAATLERİNE GÖRE YOĞUNLUK (Türkiye Saati)
+# =============================================================================
+#
+# 00:00-02:00 | Sydney     | Normal (her 5dk veri, her 30dk analiz)
+# 02:00-03:00 | Tokyo      | Normal
+# 03:00       | RESET      | Günlük tam döngü başlangıcı
+# 03:00-10:00 | Asya       | Normal
+# 10:00-15:00 | Londra     | Yoğun (önemli EUR/GBP hareketleri)
+# 15:00-19:00 | Overlap    | EN YOĞUN (Londra-NY overlap)
+# 17:30-00:00 | US Market  | Yoğun (hisse ve endeksler)
+# 00:00-02:00 | Kapanış    | Normal
+#
+# Mevcut config tüm saatlerde aynı sıklıkta çalışıyor.
+# İleriye dönük: Yoğun saatlerde analiz frekansını artırabiliriz.
+#
+# =============================================================================
+
+# =============================================================================
+# CLOUD SCHEDULER KOMUTLARI
+# =============================================================================
+#
+# # Tüm job'ları güncelle (Europe/Istanbul timezone ile)
+#
+# gcloud scheduler jobs update http data-collection \
+#     --location=europe-west1 \
+#     --schedule="*/5 * * * *" \
+#     --time-zone="Europe/Istanbul"
+#
+# gcloud scheduler jobs update http tp-sl-monitor \
+#     --location=europe-west1 \
+#     --schedule="1-58/3 * * * *" \
+#     --time-zone="Europe/Istanbul"
+#
+# gcloud scheduler jobs update http analysis-pipeline \
+#     --location=europe-west1 \
+#     --schedule="27,57 * * * *" \
+#     --time-zone="Europe/Istanbul"
+#
+# gcloud scheduler jobs update http news-monitor \
+#     --location=europe-west1 \
+#     --schedule="8 * * * *" \
+#     --time-zone="Europe/Istanbul"
+#
+# gcloud scheduler jobs update http performance-tracker \
+#     --location=europe-west1 \
+#     --schedule="0 23 * * *" \
+#     --time-zone="Europe/Istanbul"
+#
+# gcloud scheduler jobs update http weekly-report \
+#     --location=europe-west1 \
+#     --schedule="0 0 * * 0" \
+#     --time-zone="Europe/Istanbul"
+#
+# # Yeni daily-reset job oluştur
+# gcloud scheduler jobs create http daily-reset \
+#     --location=europe-west1 \
+#     --schedule="0 3 * * *" \
+#     --time-zone="Europe/Istanbul" \
+#     --uri="https://mytrade-automation-310689682340.europe-west1.run.app/full-cycle" \
+#     --http-method=POST \
+#     --description="Daily reset at 03:00 TR"
+#
 # =============================================================================
